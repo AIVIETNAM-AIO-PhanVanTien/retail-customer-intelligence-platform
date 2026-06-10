@@ -12,7 +12,7 @@ Usage::
 from __future__ import annotations
 
 import json
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -82,7 +82,7 @@ def load_all_silver() -> pd.DataFrame:
 
 # ── Dimension builders ──────────────────────────────────────────────────
 def build_dim_date(df: pd.DataFrame) -> pd.DataFrame:
-    """Build dim_date from unique shifted invoice_date values."""
+    """Build dim_date from unique invoice_date values."""
     dates = pd.to_datetime(df["invoice_date"]).dt.date.unique()
     dates = sorted(dates)
 
@@ -96,7 +96,7 @@ def build_dim_date(df: pd.DataFrame) -> pd.DataFrame:
                 "year": dt.year,
                 "month": dt.month,
                 "week": int(dt.isocalendar()[1]),
-                "day_of_week": dt.weekday(),  # 0=Mon
+                "day_of_week": dt.weekday(),
                 "quarter": (dt.month - 1) // 3 + 1,
             }
         )
@@ -106,7 +106,11 @@ def build_dim_date(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def build_dim_customer(df: pd.DataFrame) -> pd.DataFrame:
-    """Build dim_customer (placeholder segment, enriched later from RFM)."""
+    """Build dim_customer with an 'Unknown' row for empty customer_ids (FK fix)."""
+    # Create an 'Unknown' customer row (sk = 0) so fact rows with empty
+    # customer_id get a valid FK instead of NaN.
+    rows = [{"customer_sk": 0, "customer_id": "", "first_seen_date": pd.NaT, "segment": "Unknown"}]
+
     valid = df[df["customer_id"] != ""].copy()
     agg = (
         valid.groupby("customer_id")
@@ -115,13 +119,15 @@ def build_dim_customer(df: pd.DataFrame) -> pd.DataFrame:
     )
     agg["customer_sk"] = range(1, len(agg) + 1)
     agg["segment"] = "UNKNOWN"
-    dim = agg[["customer_sk", "customer_id", "first_seen_date", "segment"]]
-    print(f"  dim_customer: {len(dim)} rows")
+    rows.extend(agg[["customer_sk", "customer_id", "first_seen_date", "segment"]].to_dict("records"))
+
+    dim = pd.DataFrame(rows)
+    print(f"  dim_customer: {len(dim)} rows (incl. Unknown sk=0)")
     return dim
 
 
 def build_dim_product(df: pd.DataFrame) -> pd.DataFrame:
-    """Build dim_product from unique (stock_code, description) pairs."""
+    """Build dim_product from unique stock_code (already upper-cased in Bronze)."""
     pairs = (
         df[["stock_code", "description"]]
         .drop_duplicates(subset=["stock_code"])
@@ -156,12 +162,10 @@ def build_fact_transactions(
     dim_date: pd.DataFrame,
 ) -> pd.DataFrame:
     """Build fact_transactions by joining surrogate keys from dimensions."""
-    # Lookup maps: business key → surrogate key
     cust_map = dict(zip(dim_customer["customer_id"], dim_customer["customer_sk"]))
     prod_map = dict(zip(dim_product["stock_code"], dim_product["product_sk"]))
     cntry_map = dict(zip(dim_country["country_name"], dim_country["country_sk"]))
 
-    # Date lookup: date string → date_sk
     date_map = {
         str(d): sk
         for sk, d in zip(dim_date["date_sk"], dim_date["date"])
@@ -187,8 +191,8 @@ def build_fact_transactions(
         "price",
         "line_amount",
     ]
-    print(f"  fact_transactions: {len(fact)} rows "
-          f"(customer_sk null: {int(fact['customer_sk'].isna().sum())})")
+    null_fk = int(fact["customer_sk"].isna().sum())
+    print(f"  fact_transactions: {len(fact)} rows (customer_sk null: {null_fk})")
     return fact[out_cols]
 
 
@@ -196,44 +200,55 @@ def build_fact_transactions(
 def build_rfm_mart(df: pd.DataFrame) -> pd.DataFrame:
     """Build RFM mart with quintile scores and segment labels.
 
-    Filters: only non-cancellation rows with valid customer_id.
+    Filters: only non-cancellation rows with valid customer_id AND
+    only positive line_amount invoices for both frequency and monetary.
     """
-    # Filter
     mask = (df["customer_id"] != "") & (~df["is_cancellation"])
     valid = df[mask].copy()
 
-    # Reference date = latest shifted invoice_date
+    # Only keep rows with positive line_amount for both F and M consistency
+    valid = valid[valid["line_amount"] > 0].copy()
+
     reference_date = valid["invoice_date"].max()
 
-    # Aggregate per customer
     rfm = (
         valid.groupby("customer_id")
         .agg(
             last_purchase=("invoice_date", "max"),
             frequency=("invoice", "nunique"),
-            monetary=("line_amount", lambda x: x[x > 0].sum()),
+            monetary=("line_amount", "sum"),
         )
         .reset_index()
     )
 
     rfm["recency_days"] = (reference_date - rfm["last_purchase"]).dt.days
 
-    # Keep only positive monetary customers for scoring
-    rfm = rfm[rfm["monetary"] > 0].copy()
-
     # Quintile scoring (1-5)
-    # Use rank(method="first") for all three to handle small / tied datasets gracefully.
     n = len(rfm)
-    # Recency: lower days → higher score (inverted)
-    rfm["r_score"] = pd.qcut(rfm["recency_days"].rank(method="first"), q=min(n, 5), labels=list(range(min(n, 5), 0, -1)), duplicates="drop").astype(int)
-    # Frequency: higher → higher score
-    rfm["f_score"] = pd.qcut(rfm["frequency"].rank(method="first"), q=min(n, 5), labels=list(range(1, min(n, 5) + 1)), duplicates="drop").astype(int)
-    # Monetary: higher → higher score
-    rfm["m_score"] = pd.qcut(rfm["monetary"].rank(method="first"), q=min(n, 5), labels=list(range(1, min(n, 5) + 1)), duplicates="drop").astype(int)
+    rfm["r_score"] = pd.qcut(
+        rfm["recency_days"].rank(method="first"),
+        q=min(n, 5),
+        labels=list(range(min(n, 5), 0, -1)),
+        duplicates="drop",
+    ).astype(int)
+    rfm["f_score"] = pd.qcut(
+        rfm["frequency"].rank(method="first"),
+        q=min(n, 5),
+        labels=list(range(1, min(n, 5) + 1)),
+        duplicates="drop",
+    ).astype(int)
+    rfm["m_score"] = pd.qcut(
+        rfm["monetary"].rank(method="first"),
+        q=min(n, 5),
+        labels=list(range(1, min(n, 5) + 1)),
+        duplicates="drop",
+    ).astype(int)
 
     # Segment assignment via (r_score, f_score) lookup
     def _segment(row: pd.Series) -> str:
-        return SEGMENT_MAP.get((int(row["r_score"]), int(row["f_score"])), "Need Attention")
+        return SEGMENT_MAP.get(
+            (int(row["r_score"]), int(row["f_score"])), "Need Attention"
+        )
 
     rfm["segment"] = rfm.apply(_segment, axis=1)
 
@@ -260,7 +275,7 @@ def enrich_dim_customer_with_segment(
     dim_customer["segment"] = (
         dim_customer["customer_id"]
         .map(seg_map)
-        .fillna("No Activity")
+        .fillna(dim_customer["segment"])  # keep 'Unknown' for sk=0
     )
     return dim_customer
 
@@ -272,7 +287,7 @@ def _write_table(df: pd.DataFrame, name: str, gold_dir: Path) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
     table = pa.Table.from_pandas(df)
     pq.write_table(table, out_dir / f"{name}.parquet", compression="snappy")
-    print(f"  Written {name}: {len(df)} rows → {out_dir}")
+    print(f"  Written {name}: {len(df)} rows -> {out_dir}")
 
 
 def write_build_log(
@@ -286,23 +301,21 @@ def write_build_log(
 ) -> None:
     """Write _build_log.json audit."""
     log = {
-        "built_at": datetime.now(UTC).isoformat(),
+        "built_at": datetime.now(timezone.utc).isoformat(),
         "silver_rows": n_silver,
         "dim_customer_rows": len(dim_customer),
         "dim_product_rows": len(dim_product),
         "dim_country_rows": len(dim_country),
         "dim_date_rows": len(dim_date),
         "fact_transactions_rows": len(fact),
+        "fact_null_customer_sk": int(fact["customer_sk"].isna().sum()),
         "mart_rfm_customers": len(rfm),
         "rfm_segments": rfm["segment"].value_counts().to_dict(),
-        "date_shift_days": int(
-            (pd.Timestamp("2026-06-08") - pd.Timestamp("2011-12-09")).days
-        ),
     }
     out = GOLD_DIR / "_build_log.json"
     with open(out, "w", encoding="utf-8") as f:
         json.dump(log, f, indent=2, default=str)
-    print(f"  Written _build_log.json → {out}")
+    print(f"  Written _build_log.json -> {out}")
 
 
 # ── Orchestrator ────────────────────────────────────────────────────────
@@ -312,7 +325,7 @@ def build() -> None:
         print("[SKIP] Gold already built. Delete data/gold/ to rebuild.")
         return
 
-    print("[GOLD] Building star schema + RFM mart …\n")
+    print("[GOLD] Building star schema + RFM mart ...\n")
 
     df = load_all_silver()
     n_silver = len(df)

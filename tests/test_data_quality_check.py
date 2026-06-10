@@ -1,4 +1,4 @@
-"""Tests for TabularDataQuality utility (ACM1-40)."""
+"""Tests for TabularDataQuality utility."""
 
 import pandas as pd
 import pytest
