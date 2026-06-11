@@ -130,7 +130,8 @@ __pypackages__/
 # Celery stuff
 celerybeat-schedule
 celerybeat.pid
-
+#agent skills
+.agents
 # Redis
 *.rdb
 *.aof
@@ -216,7 +217,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-
 # ─── Project-specific ───
 
 # Data (raw, bronze, silver, gold) — too large for git
@@ -235,13 +235,6 @@ data/gold/**/*.json
 !data/silver/.gitkeep
 !data/gold/.gitkeep
 
-# DuckDB database
-*.duckdb
-
-# Large raw data files (download separately)
-data/raw/*.zip
-data/raw/uci_original/
-
 # Trained models
 models/*.pkl
 models/*.joblib
@@ -257,3 +250,5 @@ powerbi/~$*
 # OS files
 .DS_Store
 Thumbs.db
+
+mydoc
