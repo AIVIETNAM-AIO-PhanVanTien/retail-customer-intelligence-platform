@@ -39,6 +39,137 @@ Marketing sends **mass campaigns** to the entire customer base — low relevance
 
 ## 2. Architecture
 
+┌─────────────────────────────────────────────────────────────────────────────────────────────┐
+│                                      APACHE AIRFLOW                                         │
+│          ingest → clean → dbt run → dbt test → train → score → publish                      │
+└─────────────────────────────────────────────────────────────────────────────────────────────┘
+
+                                         ORCHESTRATION
+
+        │
+        ▼
+
+┌────────────────┐
+│    SOURCE      │
+├────────────────┤
+│ UCI Online     │
+│ Retail II CSV  │
+│ ~1.07M rows    │
+└────────────────┘
+        │
+        ▼
+
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                     MEDALLION LAKEHOUSE (DuckDB + Parquet)                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  BRONZE                     SILVER                     GOLD                 │
+│                                                                             │
+│  Raw CSV                    Cleaned                    Star Schema          │
+│  PyArrow                    Dedup                      + RFM Mart           │
+│  Audit Log                  Date Shift                                      │
+│  Immutable                  Validation                                      │
+│                                                                             │
+│                                                     ┌────────────────────┐  │
+│                                                     │ fact_transactions  │  │
+│                                                     └─────────┬──────────┘  │
+│                                                               │             │
+│                     ┌──────────────┬──────────────┬───────────┴──────────┐  │
+│                     │              │              │                      │  │
+│              dim_customer    dim_product     dim_date           dim_country │
+│                                                                             │
+└─────────────────────────────────────────────────────────────────────────────┘
+
+        │
+        ▼
+
+┌───────────────────────────────┐
+│       dbt + DuckDB            │
+├───────────────────────────────┤
+│ staging                       │
+│ intermediate                  │
+│ marts                         │
+│                               │
+│ dbt Tests                     │
+│ - unique                      │
+│ - not_null                    │
+│ - relationships               │
+│ - accepted_values             │
+│ - freshness                   │
+└───────────────────────────────┘
+
+        │
+        ▼
+
+┌─────────────────────────────────────────────────────────────┐
+│                     MACHINE LEARNING                        │
+├─────────────────────────────────────────────────────────────┤
+│ Feature Engineering                                         │
+│ - Recency                                                   │
+│ - Frequency                                                 │
+│ - Monetary                                                  │
+│ - AOV                                                       │
+│ - LTV                                                       │
+│ - Tenure                                                    │
+│                                                             │
+│ Models                                                      │
+│ - Logistic Regression                                       │
+│ - XGBoost                                                   │
+│                                                             │
+│ Explainability                                              │
+│ - SHAP                                                      │
+│                                                             │
+│ Segmentation                                                │
+│ - K-Means                                                   │
+│                                                             │
+│ MLflow                                                      │
+│ - Experiment Tracking                                       │
+│ - Model Registry                                            │
+│ - Batch Scoring                                             │
+└─────────────────────────────────────────────────────────────┘
+
+        │
+        ▼
+
+┌─────────────────────────────────────────────────────────────┐
+│                         SERVING                             │
+├─────────────────────────────────────────────────────────────┤
+│                                                             │
+│ Power BI (Primary Dashboard)                                │
+│ - Revenue KPIs                                              │
+│ - RFM Segments                                              │
+│ - Cohort Retention                                          │
+│ - Churn Risk                                                │
+│                                                             │
+│ Streamlit Demo                                              │
+│ - Segment Explorer                                          │
+│ - Retention List Export                                     │
+│ - Ops Dashboard                                             │
+│                                                             │
+└─────────────────────────────────────────────────────────────┘
+
+
+═══════════════════════════════════════════════════════════════════════════════
+CROSS-CUTTING
+═══════════════════════════════════════════════════════════════════════════════
+
+Docker Compose
+    └─ Airflow
+    └─ DuckDB
+    └─ MLflow
+    └─ Streamlit
+
+GitHub Actions
+    lint → dbt test → pytest → docker build
+
+Monitoring
+    Row Count
+    Null %
+    Freshness
+    Feature Drift
+    Model Drift
+    AUC Monitoring
+
 ### Medallion data flow
 
 ```
