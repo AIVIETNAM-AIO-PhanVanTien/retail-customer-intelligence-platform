@@ -130,7 +130,8 @@ __pypackages__/
 # Celery stuff
 celerybeat-schedule
 celerybeat.pid
-
+#agent skills
+.agents
 # Redis
 *.rdb
 *.aof
@@ -216,3 +217,41 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+<<<<<<< Updated upstream
+=======
+# ─── Project-specific ───
+
+# Data (raw, bronze, silver, gold) — too large for git
+data/raw/*.csv
+data/bronze/**/*.parquet
+data/bronze/**/*.csv
+data/silver/**/*.parquet
+data/silver/**/*.json
+data/silver/**/*.jsonl
+data/gold/**/*.parquet
+data/gold/**/*.npz
+data/gold/**/*.pkl
+data/gold/**/*.json
+!data/raw/.gitkeep
+!data/bronze/.gitkeep
+!data/silver/.gitkeep
+!data/gold/.gitkeep
+
+# Trained models
+models/*.pkl
+models/*.joblib
+!models/.gitkeep
+
+# Logs
+logs/
+
+# Power BI temp files
+powerbi/*.tmp
+powerbi/~$*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+mydoc
+>>>>>>> Stashed changes
