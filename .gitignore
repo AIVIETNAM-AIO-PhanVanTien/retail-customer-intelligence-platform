@@ -217,8 +217,6 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
-<<<<<<< Updated upstream
-=======
 # ─── Project-specific ───
 
 # Data (raw, bronze, silver, gold) — too large for git
@@ -254,4 +252,3 @@ powerbi/~$*
 Thumbs.db
 
 mydoc
->>>>>>> Stashed changes
