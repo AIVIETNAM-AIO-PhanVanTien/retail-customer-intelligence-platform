@@ -52,9 +52,9 @@ Marketing sends **mass campaigns** to the entire customer base — low relevance
 ┌────────────────┐
 │    SOURCE      │
 ├────────────────┤
-│ UCI Online     │
-│ Retail II CSV  │
-│ ~1.07M rows    │
+│ Online Retail    │
+│ List for RFM     │
+│ ~1.01M rows      │
 └────────────────┘
         │
         ▼
@@ -259,7 +259,7 @@ Then open:
 
 > The **primary dashboard is Power BI** (`powerbi/*.pbix`, opened in Power BI Desktop, connected to the serving marts). Streamlit is the lightweight in-stack demo.
 
-> **Dataset:** [UCI Online Retail II](https://archive.ics.uci.edu/dataset/502/online+retail+ii) (real, ~1.07M rows, CC BY 4.0). Place `online_retail_listing.csv` under `data/` (semicolon-delimited, comma decimals, `dd.mm.yyyy` dates). Timestamps are **date-rebased to the present** so recency and churn windows stay meaningful. The file is **not committed** (see `.gitignore`).
+> **Dataset:** "Online Retail List for RFM" (real, ~1.01M rows). Provided as `online_retail_listing.csv` — place under `data/raw/` (semicolon-delimited, comma decimals, `dd.mm.yyyy` dates). Timestamps are **date-rebased to the present** so recency and churn windows stay meaningful. The file is **not committed** (see `.gitignore`).
 
 ---
 
@@ -366,4 +366,4 @@ See [docs/planning/Project_Plan.md](docs/planning/Project_Plan.md) for the 4-wee
 
 ## License
 
-Dataset: UCI Online Retail II (CC BY 4.0). Project code: see `LICENSE`.
+Dataset: Online Retail List for RFM. Project code: see `LICENSE`.

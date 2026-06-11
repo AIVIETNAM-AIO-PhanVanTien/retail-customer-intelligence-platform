@@ -240,7 +240,6 @@ data/gold/**/*.json
 
 # Large raw data files (download separately)
 data/raw/*.zip
-data/raw/uci_original/
 
 # Trained models
 models/*.pkl
