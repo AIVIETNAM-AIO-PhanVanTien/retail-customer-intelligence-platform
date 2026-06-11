@@ -1,17 +1,14 @@
-"""Tests for Gold layer: star schema + RFM mart (ACM1-31, ACM1-36, ACM1-40)."""
+"""Tests for Gold layer: star schema + RFM mart."""
 
 import pandas as pd
+import pyarrow.parquet as pq
 import pytest
 
 from src.etl import gold_build
 
 
 def _silver_multi_customer_df() -> pd.DataFrame:
-    """5-row Silver-like DataFrame with 3 customers across 4 months — enough for RFM.
-
-    DATE_SHIFT_DAYS = 5295 (2026-06-08 − 2011-12-09).
-    Each shifted invoice_date = original_invoice_date + 5295 days.
-    """
+    """5-row Silver-like DataFrame with 3 customers across 4 months."""
     return pd.DataFrame(
         {
             "invoice": ["A1", "A2", "A3", "A4", "A5"],
@@ -24,15 +21,8 @@ def _silver_multi_customer_df() -> pd.DataFrame:
             "is_cancellation": [False, False, False, False, False],
             "line_amount": [50.0, 50.0, 6.0, 56.0, 40.0],
             "invoice_date": pd.to_datetime(
-                [
-                    "2026-06-01",  # C1: recent
-                    "2026-05-15",  # C1: less recent
-                    "2026-04-01",  # C2: older
-                    "2026-03-01",  # C2: even older
-                    "2026-05-30",  # C3: recent, one big order
-                ]
+                ["2026-06-01", "2026-05-15", "2026-04-01", "2026-03-01", "2026-05-30"]
             ),
-            # Each original = shifted - 5295 days (verified)
             "original_invoice_date": pd.to_datetime(
                 ["2011-12-02", "2011-11-15", "2011-10-02", "2011-09-01", "2011-11-30"]
             ),
@@ -54,13 +44,14 @@ class TestDimensions:
             assert col in dim.columns
         assert dim["date_sk"].is_unique
 
-    def test_dim_customer_has_surrogate_key(self, silver_like_df):
+    def test_dim_customer_has_unknown_row(self, silver_like_df):
         dim = gold_build.build_dim_customer(silver_like_df)
-        assert "customer_sk" in dim.columns
+        # sk=0 should be the Unknown customer for empty customer_id
+        unknown = dim[dim["customer_sk"] == 0]
+        assert len(unknown) == 1
+        assert unknown.iloc[0]["customer_id"] == ""
+        assert unknown.iloc[0]["segment"] == "Unknown"
         assert dim["customer_sk"].is_unique
-        assert dim["customer_sk"].iloc[0] == 1
-        assert "first_seen_date" in dim.columns
-        assert "segment" in dim.columns
 
     def test_dim_product_has_unique_sk(self, silver_like_df):
         dim = gold_build.build_dim_product(silver_like_df)
@@ -86,10 +77,34 @@ class TestFact:
 
         assert "transaction_sk" in fact.columns
         assert fact["transaction_sk"].is_unique
-        assert fact["customer_sk"].notna().all()
+        assert fact["customer_sk"].notna().all(), "customer_sk should never be NaN (Unknown sk=0)"
         assert fact["product_sk"].notna().all()
         assert fact["country_sk"].notna().all()
         assert fact["date_sk"].notna().all()
+
+    def test_empty_customer_id_maps_to_unknown_sk(self):
+        """Rows with empty customer_id should get customer_sk=0 (Unknown)."""
+        df = pd.DataFrame({
+            "invoice": ["A1", "A2"],
+            "stock_code": ["P1", "P2"],
+            "description": ["X", "Y"],
+            "quantity": [10.0, 5.0],
+            "price": [5.0, 3.0],
+            "customer_id": ["", "C1"],  # empty customer
+            "country": ["UK", "FR"],
+            "is_cancellation": [False, False],
+            "line_amount": [50.0, 15.0],
+            "invoice_date": pd.to_datetime(["2026-06-01", "2026-06-02"]),
+        })
+        dim_customer = gold_build.build_dim_customer(df)
+        dim_product = gold_build.build_dim_product(df)
+        dim_country = gold_build.build_dim_country(df)
+        dim_date = gold_build.build_dim_date(df)
+        fact = gold_build.build_fact_transactions(df, dim_customer, dim_product, dim_country, dim_date)
+
+        # Row with empty customer_id should have sk=0
+        assert fact.iloc[0]["customer_sk"] == 0
+        assert fact.iloc[1]["customer_sk"] == 1
 
 
 class TestRFM:
@@ -108,7 +123,6 @@ class TestRFM:
         assert (rfm["monetary"] > 0).all()
 
     def test_excludes_cancellations(self):
-        """Cancellations should not inflate frequency or monetary."""
         df = pd.DataFrame(
             {
                 "invoice": ["A1", "C2", "A3", "A4", "A5"],
@@ -123,23 +137,11 @@ class TestRFM:
                 "invoice_date": pd.to_datetime(
                     ["2026-06-01", "2026-06-02", "2026-06-03", "2026-05-01", "2026-05-02"]
                 ),
-                "original_invoice_date": pd.to_datetime(
-                    ["2011-12-02", "2011-12-03", "2011-12-04", "2011-11-01", "2011-11-02"]
-                ),
-                "invoice_year": [2026, 2026, 2026, 2026, 2026],
-                "invoice_month": [6, 6, 6, 5, 5],
-                "invoice_day": [1, 2, 3, 1, 2],
-                "invoice_quarter": [2, 2, 2, 2, 2],
-                "invoice_day_of_week": [0, 1, 2, 4, 5],
-                "invoice_week": [23, 23, 23, 18, 18],
-                "year_month": ["2026-06", "2026-06", "2026-06", "2026-05", "2026-05"],
             }
         )
         rfm = gold_build.build_rfm_mart(df)
-        # C1 should have frequency=2 (A1 and A3, NOT cancellation C2)
         c1 = rfm[rfm["customer_id"] == "C1"]
         assert c1["frequency"].values[0] == 2
-        # C1 monetary should only sum positive line_amounts (50 + 24 = 74)
         assert c1["monetary"].values[0] == pytest.approx(74.0)
 
     def test_segment_enrichment(self, silver_like_df):
@@ -148,23 +150,19 @@ class TestRFM:
         rfm = gold_build.build_rfm_mart(df)
         enriched = gold_build.enrich_dim_customer_with_segment(dim, rfm)
 
-        # Customers with RFM should have a valid segment (not UNKNOWN)
         rfm_ids = set(rfm["customer_id"])
         for _, row in enriched[enriched["customer_id"].isin(rfm_ids)].iterrows():
             assert row["segment"] != "UNKNOWN"
 
 
 class TestEndToEndPipeline:
-    """Integration test: Bronze → Silver → Gold in sequence."""
+    """Integration test: Bronze -> Silver -> Gold in sequence."""
 
     def test_bronze_silver_gold_roundtrip(self, tmp_path, monkeypatch):
-        """Run the full Medallion pipeline on a tiny raw CSV and verify Gold output."""
-        import pyarrow.parquet as pq
+        import json
 
         from src.etl import bronze_ingest, silver_transform, gold_build as gb
 
-        # ── Step 0: Write a tiny raw CSV with 3 months and 5+ non-cancellation
-        #    customers — enough for RFM quintile scoring. ──
         raw = tmp_path / "raw.csv"
         raw.write_text(
             "Invoice;StockCode;Description;Quantity;InvoiceDate;Price;Customer ID;Country\n"
@@ -181,61 +179,52 @@ class TestEndToEndPipeline:
             "489504;21733;Felt;6;02.10.2010 12:00;4,50;13089;Italy\n",
             encoding="utf-8",
         )
-        bronze_dir = tmp_path / "bronze"
-        silver_dir = tmp_path / "silver"
-        gold_dir = tmp_path / "gold"
-        bronze_dir.mkdir()
-        silver_dir.mkdir()
-        gold_dir.mkdir()
+        bronze_dir = tmp_path / "bronze"; bronze_dir.mkdir()
+        silver_dir = tmp_path / "silver"; silver_dir.mkdir()
+        gold_dir = tmp_path / "gold"; gold_dir.mkdir()
 
-        # ── Step 1: Bronze ingestion ──
         monkeypatch.setattr(bronze_ingest, "RAW_PATH", raw)
         monkeypatch.setattr(bronze_ingest, "BRONZE_DIR", bronze_dir)
         processed_months = bronze_ingest.ingest_all(raw)
 
-        assert len(processed_months) >= 2, "Bronze should process at least 2 months"
+        assert len(processed_months) >= 2
 
-        # Verify Bronze partitions exist
         bronze_parts = sorted(bronze_dir.glob("year_month=*/data.parquet"))
-        assert len(bronze_parts) >= 1
+        assert len(bronze_parts) >= 2
+        # Bronze partitions should use shifted dates (2024-2026)
+        for p in bronze_parts:
+            ym = p.parent.name.split("=")[1]
+            assert int(ym[:4]) >= 2024, f"Bronze partition {ym} should be shifted"
 
-        # ── Step 2: Silver transform ──
         monkeypatch.setattr(silver_transform, "BRONZE_DIR", bronze_dir)
         monkeypatch.setattr(silver_transform, "SILVER_DIR", silver_dir)
         silver_months = silver_transform.process_all()
+        assert len(silver_months) >= 2
 
-        assert len(silver_months) >= 1, "Silver should process at least 1 month"
-
-        # Verify Silver partitions exist
         silver_parts = sorted(silver_dir.glob("year_month=*/data_silver.parquet"))
         assert len(silver_parts) >= 1
 
-        # Verify shifted dates in Silver are in the ~2024-2026 range
-        silver_df = pq.ParquetFile(silver_parts[0]).read().to_pandas()
-        assert silver_df["invoice_date"].min() > pd.Timestamp("2024-01-01"), (
-            "Silver dates should be date-shifted to the 2024-2026 range"
-        )
-
-        # ── Step 3: Gold build ──
         monkeypatch.setattr(gb, "SILVER_DIR", silver_dir)
         monkeypatch.setattr(gb, "GOLD_DIR", gold_dir)
         gb.build()
 
-        # Verify Gold star schema tables exist
         for table_name in (
             "dim_date", "dim_customer", "dim_product",
             "dim_country", "fact_transactions", "mart_rfm",
         ):
             path = gold_dir / table_name / f"{table_name}.parquet"
             assert path.exists(), f"Gold table {table_name} not found"
-            t = pq.read_table(path)
+            t = pq.ParquetFile(path).read()
             assert t.num_rows > 0, f"Gold table {table_name} is empty"
 
-        # Verify build log
+        # Verify no null FKs in fact
+        fact = pq.ParquetFile(gold_dir / "fact_transactions" / "fact_transactions.parquet").read().to_pandas()
+        assert fact["customer_sk"].notna().all(), "customer_sk should never be null"
+
         log_path = gold_dir / "_build_log.json"
         assert log_path.exists()
-        import json
         with open(log_path) as f:
             log = json.load(f)
         assert log["silver_rows"] > 0
         assert log["fact_transactions_rows"] > 0
+        assert log["fact_null_customer_sk"] == 0

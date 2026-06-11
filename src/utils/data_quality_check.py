@@ -49,8 +49,11 @@ class TabularDataQuality:
                 info["empty_string_rate"] = round(
                     (s_str == "").sum() / max(total, 1), 4
                 )
+                # whitespace-only = was non-empty before strip, empty after
+                s_before = s.fillna("").astype(str)
+                whitespace_only = ((s_before.str.strip() == "") & (s_before != "")).sum()
                 info["whitespace_only_rate"] = round(
-                    (s_str.str.len() > 0).sum() / max(total, 1), 4
+                    whitespace_only / max(total, 1), 4
                 )
             col_report[col] = info
         return {"total_rows": total, "columns": col_report}

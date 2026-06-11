@@ -10,7 +10,10 @@ import pytest
 
 @pytest.fixture
 def bronze_like_df() -> pd.DataFrame:
-    """Small DataFrame mimicking Bronze output for one month (3 rows)."""
+    """Small DataFrame mimicking Bronze output for one month (3 rows).
+
+    Dates are already shifted to ~2026 (date synthesis is now in Bronze).
+    """
     return pd.DataFrame(
         {
             "invoice": ["489434", "489434", "C489449"],
@@ -22,6 +25,11 @@ def bronze_like_df() -> pd.DataFrame:
             ],
             "quantity": [12.0, 12.0, -12.0],
             "invoice_date": [
+                datetime(2024, 6, 7, 7, 45),
+                datetime(2024, 6, 7, 7, 45),
+                datetime(2024, 6, 7, 10, 33),
+            ],
+            "original_invoice_date": [
                 datetime(2009, 12, 1, 7, 45),
                 datetime(2009, 12, 1, 7, 45),
                 datetime(2009, 12, 1, 10, 33),
@@ -31,9 +39,9 @@ def bronze_like_df() -> pd.DataFrame:
             "country": ["United Kingdom", "United Kingdom", "Australia"],
             "is_cancellation": [False, False, True],
             "ingested_at": [
-                datetime(2026, 6, 8),
-                datetime(2026, 6, 8),
-                datetime(2026, 6, 8),
+                datetime(2026, 6, 10),
+                datetime(2026, 6, 10),
+                datetime(2026, 6, 10),
             ],
         }
     )
@@ -41,12 +49,10 @@ def bronze_like_df() -> pd.DataFrame:
 
 @pytest.fixture
 def silver_like_df() -> pd.DataFrame:
-    """Small DataFrame mimicking Silver output after cleaning + date-shift (5 rows).
+    """Small DataFrame mimicking Silver output after cleaning (5 rows).
 
-    DATE_SHIFT_DAYS = 5295  (2026-06-08 − 2011-12-09).
-    All rows share the same original date (2009-12-01), so all shift to 2024-05-31.
+    Dates are already shifted (from Bronze), with derived calendar columns.
     """
-    shifted = datetime(2024, 5, 31, 7, 45)   # 2009-12-01 07:45 + 5295 days
     return pd.DataFrame(
         {
             "invoice": ["489434", "489434", "C489449", "489465", "489465"],
@@ -71,11 +77,11 @@ def silver_like_df() -> pd.DataFrame:
             "is_cancellation": [False, False, True, False, False],
             "line_amount": [83.40, 81.00, -35.40, 39.60, 19.80],
             "invoice_date": [
-                shifted,
-                shifted,
-                datetime(2024, 5, 31, 10, 33),
-                datetime(2024, 5, 31, 12, 0),
-                datetime(2024, 5, 31, 12, 0),
+                datetime(2024, 6, 7, 7, 45),
+                datetime(2024, 6, 7, 7, 45),
+                datetime(2024, 6, 7, 10, 33),
+                datetime(2024, 6, 7, 12, 0),
+                datetime(2024, 6, 7, 12, 0),
             ],
             "original_invoice_date": [
                 datetime(2009, 12, 1, 7, 45),
@@ -85,11 +91,11 @@ def silver_like_df() -> pd.DataFrame:
                 datetime(2009, 12, 1, 12, 0),
             ],
             "invoice_year": [2024, 2024, 2024, 2024, 2024],
-            "invoice_month": [5, 5, 5, 5, 5],
-            "invoice_day": [31, 31, 31, 31, 31],
+            "invoice_month": [6, 6, 6, 6, 6],
+            "invoice_day": [7, 7, 7, 7, 7],
             "invoice_quarter": [2, 2, 2, 2, 2],
             "invoice_day_of_week": [4, 4, 4, 4, 4],
-            "invoice_week": [22, 22, 22, 22, 22],
-            "year_month": ["2024-05", "2024-05", "2024-05", "2024-05", "2024-05"],
+            "invoice_week": [23, 23, 23, 23, 23],
+            "year_month": ["2024-06", "2024-06", "2024-06", "2024-06", "2024-06"],
         }
     )

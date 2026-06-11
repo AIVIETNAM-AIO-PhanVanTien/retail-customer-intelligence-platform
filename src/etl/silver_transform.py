@@ -1,17 +1,18 @@
-"""Silver layer: clean, dedup, date-shift, validate (ACM1-30).
+"""Silver layer: clean, dedup, validate (ACM1-30).
 
-Reads Bronze Parquet partitions, applies cleaning rules, rebases dates to
-the present so recency / churn windows are meaningful, runs quality checks,
-and writes validated Silver Parquet.
+Reads Bronze Parquet partitions, applies cleaning rules, runs quality
+checks, and writes validated Silver Parquet.
+
+Date synthesis is now in Bronze. Silver only cleans and validates.
 
 Processing order
 ----------------
-``process_all()`` iterates **newest month first** (same as Bronze).
+``process_all()`` iterates **newest month first**.
 
 Usage::
 
     # single month
-    python -m src.etl.silver_transform --month 2010-06
+    python -m src.etl.silver_transform --month 2026-05
 
     # all months, newest first
     python -m src.etl.silver_transform --all
@@ -21,7 +22,7 @@ from __future__ import annotations
 
 import argparse
 import json
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 from pathlib import Path
 
 import numpy as np
@@ -34,13 +35,6 @@ from src.utils.data_quality_check import TabularDataQuality
 # ── Constants ────────────────────────────────────────────────────────────
 BRONZE_DIR: Path = Path("data/bronze")
 SILVER_DIR: Path = Path("data/silver")
-SEED: int = 42
-
-# Date-shift configuration
-# Rebase so max(original_date) ≈ today → recency / churn windows meaningful
-REFERENCE_DATE_OLD = pd.Timestamp("2011-12-09")  # max date in UCI dataset
-REFERENCE_DATE_NEW = pd.Timestamp("2026-06-08")  # today (hardcoded for determinism)
-DATE_SHIFT_DAYS = (REFERENCE_DATE_NEW - REFERENCE_DATE_OLD).days  # ≈ 5 272 days
 
 # ── PyArrow schema ───────────────────────────────────────────────────────
 SILVER_SCHEMA = pa.schema(
@@ -54,7 +48,7 @@ SILVER_SCHEMA = pa.schema(
         pa.field("country", pa.string()),
         pa.field("is_cancellation", pa.bool_()),
         pa.field("line_amount", pa.float64()),
-        pa.field("invoice_date", pa.timestamp("us")),  # shifted
+        pa.field("invoice_date", pa.timestamp("us")),
         pa.field("original_invoice_date", pa.timestamp("us")),
         pa.field("invoice_year", pa.int32()),
         pa.field("invoice_month", pa.int32()),
@@ -86,6 +80,7 @@ def run_cleaning(df: pd.DataFrame) -> pd.DataFrame:
     df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce")
     df["price"] = pd.to_numeric(df["price"], errors="coerce")
     df["invoice_date"] = pd.to_datetime(df["invoice_date"], errors="coerce")
+    df["is_cancellation"] = df["is_cancellation"].astype(bool)
 
     # Strip whitespace on text columns
     for col in ("description", "stock_code", "country", "invoice"):
@@ -103,27 +98,21 @@ def run_cleaning(df: pd.DataFrame) -> pd.DataFrame:
     # Compute line_amount
     df["line_amount"] = df["quantity"] * df["price"]
 
-    # Filter noise rows: price == 0 AND quantity == 0 (junk/test entries)
-    noise_mask = (df["price"] == 0) & (df["quantity"] == 0)
+    # ── Noise filter (business rules) ──
+    # Non-cancellation rows with price <= 0 are adjustments/bad-debt/junk
+    noise_mask = (~df["is_cancellation"]) & (df["price"] <= 0)
     n_noise = int(noise_mask.sum())
     if n_noise > 0:
         df = df[~noise_mask].copy()
-        print(f"  Filtered {n_noise} zero-price-zero-quantity noise rows")
+        print(f"  Filtered {n_noise} non-cancellation rows with price <= 0")
 
-    print(f"  Cleaning: {initial} → {len(df)} rows")
+    print(f"  Cleaning: {initial} -> {len(df)} rows")
     return df.reset_index(drop=True)
 
 
-# ── Step 2: Date shift ──────────────────────────────────────────────────
-def run_date_shift(df: pd.DataFrame) -> pd.DataFrame:
-    """Rebase invoice_date to present and add calendar derived columns."""
-    # Preserve original for audit
-    df["original_invoice_date"] = df["invoice_date"]
-
-    # Shift
-    df["invoice_date"] = df["invoice_date"] + pd.Timedelta(days=DATE_SHIFT_DAYS)
-
-    # Derived calendar columns (from shifted date)
+# ── Step 2: Derived calendar columns ────────────────────────────────────
+def run_derive_calendar(df: pd.DataFrame) -> pd.DataFrame:
+    """Add calendar derived columns from the (already-shifted) invoice_date."""
     dt = df["invoice_date"].dt
     df["invoice_year"] = dt.year.astype("int32")
     df["invoice_month"] = dt.month.astype("int32")
@@ -131,10 +120,7 @@ def run_date_shift(df: pd.DataFrame) -> pd.DataFrame:
     df["invoice_quarter"] = dt.quarter.astype("int32")
     df["invoice_day_of_week"] = dt.dayofweek.astype(np.int32)  # 0=Mon
     df["invoice_week"] = dt.isocalendar().week.astype(np.int32)
-    df["year_month"] = dt.strftime("%Y-%m").astype(str)  # plain string, not categorical
-
-    print(f"  Date-shift: +{DATE_SHIFT_DAYS} days "
-          f"({df['original_invoice_date'].min().date()} → {df['invoice_date'].min().date()})")
+    df["year_month"] = dt.strftime("%Y-%m").astype(str)
     return df
 
 
@@ -147,9 +133,9 @@ def run_quality_check(df: pd.DataFrame, year_month: str) -> tuple[pd.DataFrame, 
     report: dict = {
         "year_month": year_month,
         "initial_rows": len(df),
-        "final_rows": len(df),  # Silver keeps all valid rows
+        "final_rows": len(df),
         "quality_metrics": metrics,
-        "checked_at": datetime.now(UTC).isoformat(),
+        "checked_at": datetime.now(timezone.utc).isoformat(),
     }
     return df, report
 
@@ -162,23 +148,21 @@ def write_silver_partition(df: pd.DataFrame, year_month: str) -> None:
 
     cols = [f.name for f in SILVER_SCHEMA]
     sub = df[cols].copy()
-    # Force all string columns to plain str (kill Categorical / Arrow dictionary)
+    # Force all string columns to plain str
     for col in sub.select_dtypes(include=["category", "object"]).columns:
         sub[col] = sub[col].astype(str)
     table = pa.Table.from_pandas(sub, schema=SILVER_SCHEMA)
     pq.write_table(table, part_dir / "data_silver.parquet", compression="snappy")
-    print(f"  Written {len(df)} rows → {part_dir / 'data_silver.parquet'}")
+    print(f"  Written {len(df)} rows -> {part_dir / 'data_silver.parquet'}")
 
 
 def write_quality_report(report: dict, year_month: str) -> None:
     """Write per-partition quality JSON and append to cumulative JSONL log."""
-    # Per-partition report
     qr_path = SILVER_DIR / f"year_month={year_month}" / "quality_report.json"
     qr_path.parent.mkdir(parents=True, exist_ok=True)
     with open(qr_path, "w", encoding="utf-8") as f:
         json.dump(report, f, indent=2, default=str)
 
-    # Cumulative log (append)
     log_path = SILVER_DIR / "_quality_log.jsonl"
     summary = {k: v for k, v in report.items() if k != "quality_metrics"}
     with open(log_path, "a", encoding="utf-8") as f:
@@ -193,10 +177,10 @@ def process(year_month: str) -> None:
         print(f"[SKIP] Silver {year_month} already exists.")
         return
 
-    print(f"[SILVER] Processing {year_month} …")
+    print(f"[SILVER] Processing {year_month} ...")
     df = load_bronze(year_month)
     df = run_cleaning(df)
-    df = run_date_shift(df)
+    df = run_derive_calendar(df)
     df, report = run_quality_check(df, year_month)
     write_silver_partition(df, year_month)
     write_quality_report(report, year_month)
@@ -205,7 +189,6 @@ def process(year_month: str) -> None:
 
 def process_all() -> list[str]:
     """Process all Silver partitions, **newest month first**."""
-    # Discover Bronze partitions
     if not BRONZE_DIR.exists():
         print("[ERROR] No Bronze data found.")
         return []
@@ -216,10 +199,10 @@ def process_all() -> list[str]:
             for p in BRONZE_DIR.iterdir()
             if p.is_dir() and p.name.startswith("year_month=")
         ],
-        reverse=True,  # newest first
+        reverse=True,
     )
     print(f"[SILVER-ALL] {len(months)} Bronze partitions, newest-first: "
-          f"{months[0]} … {months[-1]}")
+          f"{months[0]} ... {months[-1]}")
     processed: list[str] = []
     for ym in months:
         process(ym)

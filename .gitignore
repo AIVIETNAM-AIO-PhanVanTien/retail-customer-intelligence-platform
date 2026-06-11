@@ -235,6 +235,13 @@ data/gold/**/*.json
 !data/silver/.gitkeep
 !data/gold/.gitkeep
 
+# DuckDB database
+*.duckdb
+
+# Large raw data files (download separately)
+data/raw/*.zip
+data/raw/uci_original/
+
 # Trained models
 models/*.pkl
 models/*.joblib

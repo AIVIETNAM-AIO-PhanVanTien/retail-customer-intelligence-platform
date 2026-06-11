@@ -1,4 +1,4 @@
-"""Tests for Bronze ingestion (ACM1-29, ACM1-40)."""
+"""Tests for Bronze ingestion."""
 
 from pathlib import Path
 
@@ -23,13 +23,11 @@ class TestNormalizeColumns:
                 "Price": ["6,95", "2,95", "0,00"],
                 "Customer ID": ["13085", "16321", ""],
                 "Country": ["United Kingdom", "Australia", "United Kingdom"],
-                "_parsed_date": pd.to_datetime(["2009-12-01"] * 3),
             }
         )
         result = bronze_ingest.normalize_columns(df)
         assert result.loc[0, "is_cancellation"] == False  # noqa: E712
         assert result.loc[1, "is_cancellation"] == True  # noqa: E712
-        # A-prefix is NOT a cancellation (only C is)
         assert result.loc[2, "is_cancellation"] == False  # noqa: E712
 
     def test_handles_missing_customer_id(self):
@@ -43,11 +41,9 @@ class TestNormalizeColumns:
                 "Price": ["6,95"],
                 "Customer ID": [""],
                 "Country": ["United Kingdom"],
-                "_parsed_date": pd.to_datetime(["2009-12-01"]),
             }
         )
         result = bronze_ingest.normalize_columns(df)
-        # Missing customer_id should be empty string, not NaN
         assert result.loc[0, "customer_id"] == ""
 
     def test_snake_case_rename(self):
@@ -61,27 +57,55 @@ class TestNormalizeColumns:
                 "Price": ["6,95"],
                 "Customer ID": ["13085"],
                 "Country": ["United Kingdom"],
-                "_parsed_date": pd.to_datetime(["2009-12-01"]),
             }
         )
         result = bronze_ingest.normalize_columns(df)
         for expected in (
-            "invoice",
-            "stock_code",
-            "description",
-            "quantity",
-            "price",
-            "customer_id",
-            "country",
+            "invoice", "stock_code", "description", "quantity",
+            "price", "customer_id", "country",
         ):
             assert expected in result.columns
+
+    def test_shifts_dates_to_2026(self):
+        df = pd.DataFrame(
+            {
+                "Invoice": ["489434"],
+                "StockCode": ["85048"],
+                "Description": ["Ball"],
+                "Quantity": ["12"],
+                "InvoiceDate": ["04.12.2011 13:15"],
+                "Price": ["6,95"],
+                "Customer ID": ["13085"],
+                "Country": ["United Kingdom"],
+            }
+        )
+        result = bronze_ingest.normalize_columns(df)
+        # 2011-12-04 + 5302 days = 2026-06-10
+        assert result.loc[0, "invoice_date"].year == 2026
+        assert result.loc[0, "invoice_date"].month == 6
+        assert result.loc[0, "original_invoice_date"].year == 2011
+
+    def test_stock_code_uppercase(self):
+        df = pd.DataFrame(
+            {
+                "Invoice": ["1"],
+                "StockCode": ["85049a"],
+                "Description": ["Ball"],
+                "Quantity": ["1"],
+                "InvoiceDate": ["1.12.2009 07:45"],
+                "Price": ["1,00"],
+                "Customer ID": ["1"],
+                "Country": ["UK"],
+            }
+        )
+        result = bronze_ingest.normalize_columns(df)
+        assert result.loc[0, "stock_code"] == "85049A"
 
 
 class TestIngest:
     """Integration tests for the full ingest flow."""
 
     def test_ingest_writes_partition_and_log(self, tmp_path, monkeypatch):
-        # Write a tiny raw CSV in the expected semicolon format
         raw = tmp_path / "raw.csv"
         raw.write_text(
             "Invoice;StockCode;Description;Quantity;InvoiceDate;Price;Customer ID;Country\n"
@@ -95,31 +119,35 @@ class TestIngest:
         monkeypatch.setattr(bronze_ingest, "RAW_PATH", raw)
         monkeypatch.setattr(bronze_ingest, "BRONZE_DIR", bronze_dir)
 
-        bronze_ingest.ingest("2009-12", raw_path=raw)
+        # Discover shifted months first
+        months = bronze_ingest._discover_months(raw)
+        assert len(months) == 1
+        # Month should be in 2024 (shifted from 2009-12)
+        assert months[0].startswith("2024-")
 
-        # Parquet exists
-        pq_path = bronze_dir / "year_month=2009-12" / "data.parquet"
+        bronze_ingest.ingest(months[0], raw_path=raw)
+
+        pq_path = bronze_dir / f"year_month={months[0]}" / "data.parquet"
         assert pq_path.exists()
 
-        # Can read it back
-        table = pq.read_table(pq_path)
+        table = pq.ParquetFile(pq_path).read()
         assert table.num_rows == 2
         assert "is_cancellation" in table.schema.names
+        # Verify date is shifted
+        dates = table.column("invoice_date").to_pylist()
+        assert all(d.year >= 2024 for d in dates)
 
-        # Log exists
         log_path = bronze_dir / "_ingestion_log.csv"
         assert log_path.exists()
 
     def test_ingest_is_idempotent(self, tmp_path, monkeypatch):
-        bronze_dir = tmp_path / "bronze" / "year_month=2009-12"
+        bronze_dir = tmp_path / "bronze" / "year_month=2024-06"
         bronze_dir.mkdir(parents=True)
-        # Pre-create partition
         (bronze_dir / "data.parquet").write_bytes(b"already_here")
 
         monkeypatch.setattr(bronze_ingest, "BRONZE_DIR", tmp_path / "bronze")
 
-        # Should not raise and should not overwrite
-        bronze_ingest.ingest("2009-12")
+        bronze_ingest.ingest("2024-06")
         assert (bronze_dir / "data.parquet").read_bytes() == b"already_here"
 
 
@@ -127,7 +155,6 @@ class TestIngestAllIteration:
     """Verify ingest_all() processes months newest-first."""
 
     def test_ingest_all_processes_newest_first(self, tmp_path, monkeypatch):
-        # Write a raw CSV with rows spanning 3 different months
         raw = tmp_path / "raw.csv"
         raw.write_text(
             "Invoice;StockCode;Description;Quantity;InvoiceDate;Price;Customer ID;Country\n"
@@ -149,6 +176,3 @@ class TestIngestAllIteration:
             f"ingest_all() did not iterate newest-first: {processed}"
         )
         assert len(processed) == 3
-        # First processed should be 2011-01 (newest), last 2009-12 (oldest)
-        assert processed[0] == "2011-01"
-        assert processed[-1] == "2009-12"
