@@ -1,0 +1,39 @@
+version: 2
+
+models:
+  - name: stg_bronze__transactions
+    description: "Cleaned transactions from Bronze layer parquet files, deduplicated and filtered for noise"
+    columns:
+      - name: invoice
+        description: "Invoice number"
+        tests:
+          - not_null
+      - name: stock_code
+        description: "Product stock code"
+        tests:
+          - not_null
+      - name: customer_id
+        description: "Customer identifier, empty string for unknown customers"
+      - name: quantity
+        description: "Quantity purchased"
+        tests:
+          - not_null
+      - name: price
+        description: "Unit price"
+        tests:
+          - not_null
+      - name: line_amount
+        description: "quantity * price"
+        tests:
+          - not_null
+      - name: is_cancellation
+        description: "Flag for cancelled orders"
+        tests:
+          - not_null
+      - name: invoice_date
+        description: "Date-shifted invoice timestamp"
+        tests:
+          - not_null
+      - name: country
+        description: "Customer's country"
+      
