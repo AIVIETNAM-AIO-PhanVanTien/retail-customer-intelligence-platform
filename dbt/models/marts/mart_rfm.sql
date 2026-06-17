@@ -4,10 +4,8 @@
 WITH valid_purchases AS (
     -- Only non-cancellation rows with valid customer and positive line_amount
     SELECT *
-    FROM {{ ref('stg_bronze__transactions') }}
-    WHERE customer_id != ''
-      AND is_cancellation = false
-      AND line_amount > 0
+    FROM {{ ref('int_transactions__prepared') }}
+    WHERE is_valid_purchase
 ),
 reference AS (
     SELECT MAX(invoice_date) AS ref_date FROM valid_purchases

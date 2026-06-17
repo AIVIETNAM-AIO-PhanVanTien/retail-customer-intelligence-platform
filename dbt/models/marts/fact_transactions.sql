@@ -1,6 +1,9 @@
 {{ config(materialized='table') }}
 
--- fact_transactions: join surrogate keys from dimensions
+-- fact_transactions: full-grain fact (purchases + cancellations) with surrogate keys.
+-- is_cancellation is kept as explicit business logic: cancellations are real events
+-- (returns) that affect revenue. Do NOT drop them — NET revenue = SUM(line_amount)
+-- over the full fact (negatives subtract returns automatically). See PBI measures.
 WITH txns AS (
     SELECT
         t.invoice,
@@ -10,8 +13,9 @@ WITH txns AS (
         t.quantity,
         t.price,
         t.line_amount,
-        CAST(t.invoice_date AS DATE) AS tx_date
-    FROM {{ ref('stg_bronze__transactions') }} t
+        t.is_cancellation,
+        t.tx_date
+    FROM {{ ref('int_transactions__prepared') }} t
 ),
 with_sk AS (
     SELECT
@@ -22,7 +26,8 @@ with_sk AS (
         d.date_sk,
         tx.quantity,
         tx.price,
-        tx.line_amount
+        tx.line_amount,
+        tx.is_cancellation
     FROM txns tx
     LEFT JOIN {{ ref('dim_customer') }} c  ON tx.customer_id = c.customer_id
     LEFT JOIN {{ ref('dim_product') }} p   ON tx.stock_code = p.stock_code

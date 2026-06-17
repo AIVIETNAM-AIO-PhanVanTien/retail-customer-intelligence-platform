@@ -6,6 +6,6 @@ SELECT
     country AS country_name
 FROM (
     SELECT DISTINCT country
-    FROM {{ ref('stg_bronze__transactions') }}
+    FROM {{ ref('int_transactions__prepared') }}
 ) t
 ORDER BY country_sk
