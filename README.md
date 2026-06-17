@@ -39,137 +39,6 @@ Marketing sends **mass campaigns** to the entire customer base — low relevance
 
 ## 2. Architecture
 
-┌─────────────────────────────────────────────────────────────────────────────────────────────┐
-│                                      APACHE AIRFLOW                                         │
-│          ingest → clean → dbt run → dbt test → train → score → publish                      │
-└─────────────────────────────────────────────────────────────────────────────────────────────┘
-
-                                         ORCHESTRATION
-
-        │
-        ▼
-
-┌────────────────┐
-│    SOURCE      │
-├────────────────┤
-│ UCI Online     │
-│ Retail II CSV  │
-│ ~1.07M rows    │
-└────────────────┘
-        │
-        ▼
-
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                     MEDALLION LAKEHOUSE (DuckDB + Parquet)                  │
-├─────────────────────────────────────────────────────────────────────────────┤
-│                                                                             │
-│  BRONZE                     SILVER                     GOLD                 │
-│                                                                             │
-│  Raw CSV                    Cleaned                    Star Schema          │
-│  PyArrow                    Dedup                      + RFM Mart           │
-│  Audit Log                  Date Shift                                      │
-│  Immutable                  Validation                                      │
-│                                                                             │
-│                                                     ┌────────────────────┐  │
-│                                                     │ fact_transactions  │  │
-│                                                     └─────────┬──────────┘  │
-│                                                               │             │
-│                     ┌──────────────┬──────────────┬───────────┴──────────┐  │
-│                     │              │              │                      │  │
-│              dim_customer    dim_product     dim_date           dim_country │
-│                                                                             │
-└─────────────────────────────────────────────────────────────────────────────┘
-
-        │
-        ▼
-
-┌───────────────────────────────┐
-│       dbt + DuckDB            │
-├───────────────────────────────┤
-│ staging                       │
-│ intermediate                  │
-│ marts                         │
-│                               │
-│ dbt Tests                     │
-│ - unique                      │
-│ - not_null                    │
-│ - relationships               │
-│ - accepted_values             │
-│ - freshness                   │
-└───────────────────────────────┘
-
-        │
-        ▼
-
-┌─────────────────────────────────────────────────────────────┐
-│                     MACHINE LEARNING                        │
-├─────────────────────────────────────────────────────────────┤
-│ Feature Engineering                                         │
-│ - Recency                                                   │
-│ - Frequency                                                 │
-│ - Monetary                                                  │
-│ - AOV                                                       │
-│ - LTV                                                       │
-│ - Tenure                                                    │
-│                                                             │
-│ Models                                                      │
-│ - Logistic Regression                                       │
-│ - XGBoost                                                   │
-│                                                             │
-│ Explainability                                              │
-│ - SHAP                                                      │
-│                                                             │
-│ Segmentation                                                │
-│ - K-Means                                                   │
-│                                                             │
-│ MLflow                                                      │
-│ - Experiment Tracking                                       │
-│ - Model Registry                                            │
-│ - Batch Scoring                                             │
-└─────────────────────────────────────────────────────────────┘
-
-        │
-        ▼
-
-┌─────────────────────────────────────────────────────────────┐
-│                         SERVING                             │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│ Power BI (Primary Dashboard)                                │
-│ - Revenue KPIs                                              │
-│ - RFM Segments                                              │
-│ - Cohort Retention                                          │
-│ - Churn Risk                                                │
-│                                                             │
-│ Streamlit Demo                                              │
-│ - Segment Explorer                                          │
-│ - Retention List Export                                     │
-│ - Ops Dashboard                                             │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
-
-
-═══════════════════════════════════════════════════════════════════════════════
-CROSS-CUTTING
-═══════════════════════════════════════════════════════════════════════════════
-
-Docker Compose
-    └─ Airflow
-    └─ DuckDB
-    └─ MLflow
-    └─ Streamlit
-
-GitHub Actions
-    lint → dbt test → pytest → docker build
-
-Monitoring
-    Row Count
-    Null %
-    Freshness
-    Feature Drift
-    Model Drift
-    AUC Monitoring
-
 ### Medallion data flow
 
 ```
@@ -255,11 +124,11 @@ Then open:
 | --- | --- |
 | Streamlit demo app | http://localhost:8501 |
 | Airflow UI | http://localhost:8080 |
-| MLflow UI | http://localhost:5000 |
+| MLflow UI | http://localhost:5001 |
 
 > The **primary dashboard is Power BI** (`powerbi/*.pbix`, opened in Power BI Desktop, connected to the serving marts). Streamlit is the lightweight in-stack demo.
 
-> **Dataset:** [UCI Online Retail II](https://archive.ics.uci.edu/dataset/502/online+retail+ii) (real, ~1.07M rows, CC BY 4.0). Place `online_retail_listing.csv` under `data/` (semicolon-delimited, comma decimals, `dd.mm.yyyy` dates). Timestamps are **date-rebased to the present** so recency and churn windows stay meaningful. The file is **not committed** (see `.gitignore`).
+> **Dataset:** "Online Retail List for RFM" (real, ~1.01M rows). Provided as `online_retail_listing.csv` — place under `data/raw/` (semicolon-delimited, comma decimals, `dd.mm.yyyy` dates). Timestamps are **date-rebased to the present** so recency and churn windows stay meaningful. The file is **not committed** (see `.gitignore`).
 
 ---
 
@@ -366,4 +235,4 @@ See [docs/planning/Project_Plan.md](docs/planning/Project_Plan.md) for the 4-wee
 
 ## License
 
-Dataset: UCI Online Retail II (CC BY 4.0). Project code: see `LICENSE`.
+Dataset: Online Retail List for RFM. Project code: see `LICENSE`.

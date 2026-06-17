@@ -43,25 +43,19 @@ scored AS (
 segmented AS (
     SELECT
         *,
+        -- Mirrors SEGMENT_MAP in src/etl/gold_build.py — keep the two in sync
         CASE
-            WHEN r_score >= 4 AND f_score >= 4 THEN 'Champions'
-            WHEN r_score = 5 AND f_score IN (1, 2) THEN
-                CASE WHEN f_score = 1 THEN 'New Customers' ELSE 'Promising' END
-            WHEN r_score = 4 AND f_score = 1 THEN 'Promising'
-            WHEN r_score = 4 AND f_score = 2 THEN 'Need Attention'
-            WHEN r_score = 3 AND f_score >= 4 THEN 'Loyal Customers'
-            WHEN r_score = 3 AND f_score = 3 THEN 'Potential Loyalists'
-            WHEN r_score = 3 AND f_score = 2 THEN 'Need Attention'
-            WHEN r_score = 3 AND f_score = 1 THEN 'About to Sleep'
-            WHEN r_score = 2 AND f_score >= 4 THEN
-                CASE WHEN f_score = 5 THEN 'Cannot Lose Them' ELSE 'At Risk' END
-            WHEN r_score = 2 AND f_score = 3 THEN 'At Risk'
-            WHEN r_score = 2 AND f_score = 2 THEN 'At Risk'
-            WHEN r_score = 2 AND f_score = 1 THEN 'About to Sleep'
-            WHEN r_score = 1 AND f_score >= 4 THEN 'Cannot Lose Them'
-            WHEN r_score = 1 AND f_score = 3 THEN 'Hibernating'
-            WHEN r_score <= 2 THEN 'Hibernating'
-            ELSE 'Lost'
+            WHEN (r_score = 5 AND f_score >= 4) OR (r_score = 4 AND f_score = 5) THEN 'Champions'
+            WHEN (r_score = 4 AND f_score IN (3, 4)) OR (r_score = 3 AND f_score = 5) THEN 'Loyal Customers'
+            WHEN r_score = 3 AND f_score IN (3, 4) THEN 'Potential Loyalists'
+            WHEN r_score = 5 AND f_score = 1 THEN 'New Customers'
+            WHEN (r_score = 5 AND f_score = 2) OR (r_score = 4 AND f_score = 1) THEN 'Promising'
+            WHEN (r_score = 2 AND f_score = 5) OR (r_score = 1 AND f_score >= 4) THEN 'Cannot Lose Them'
+            WHEN r_score = 2 AND f_score IN (2, 3, 4) THEN 'At Risk'
+            WHEN r_score IN (2, 3) AND f_score = 1 THEN 'About to Sleep'
+            WHEN r_score = 1 AND f_score IN (2, 3) THEN 'Hibernating'
+            WHEN r_score = 1 AND f_score = 1 THEN 'Lost'
+            ELSE 'Need Attention'
         END AS segment
     FROM scored
 )

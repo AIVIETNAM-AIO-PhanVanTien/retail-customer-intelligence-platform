@@ -34,12 +34,10 @@ import pyarrow.parquet as pq
 
 # ── Constants ────────────────────────────────────────────────────────────
 RAW_PATH: Path = Path("data/raw/online_retail_listing.csv")
-XLSX_PATH: Path = Path("data/raw/uci_original/online_retail_II.xlsx")
 BRONZE_DIR: Path = Path("data/bronze")
 
 # Date-shift: rebase max(original_date) ≈ today
-# Original xlsx max date is 2011-12-09 (CSV was truncated to 2011-12-04)
-REFERENCE_DATE_OLD = pd.Timestamp("2011-12-09")  # max date in original UCI dataset
+REFERENCE_DATE_OLD = pd.Timestamp("2011-12-09")  # max date in source dataset
 REFERENCE_DATE_NEW = pd.Timestamp("2026-06-10")  # today
 DATE_SHIFT_DAYS = (REFERENCE_DATE_NEW - REFERENCE_DATE_OLD).days  # 5 295
 
@@ -82,29 +80,21 @@ def _read_raw_file(
     raw_path: Path,
     columns: list[str] | None = None,
 ) -> pd.DataFrame:
-    """Read raw CSV or XLSX. Supports both data sources."""
+    """Read raw CSV (semicolon-delimited, ISO-8859-1)."""
     usecols = columns if columns else None
-    if raw_path.suffix.lower() == ".xlsx":
-        df1 = pd.read_excel(raw_path, sheet_name=0, usecols=usecols)
-        df2 = pd.read_excel(raw_path, sheet_name=1, usecols=usecols)
-        df = pd.concat([df1, df2], ignore_index=True)
-    else:
-        df = pd.read_csv(
-            raw_path, sep=";", usecols=usecols,
-            dtype=str, encoding="ISO-8859-1",
-        )
+    df = pd.read_csv(
+        raw_path, sep=";", usecols=usecols,
+        dtype=str, encoding="ISO-8859-1",
+    )
     return df
 
 
 def _load_raw_all(raw_path: Path = RAW_PATH) -> pd.DataFrame:
-    """Read the full raw data **once** (CSV or XLSX)."""
-    if raw_path.suffix.lower() == ".xlsx":
-        df = _read_raw_file(raw_path)
-    else:
-        df = pd.read_csv(
-            raw_path, sep=";", dtype=str, encoding="ISO-8859-1",
-        )
-        df.columns = df.columns.str.strip()
+    """Read the full raw data **once** (CSV)."""
+    df = pd.read_csv(
+        raw_path, sep=";", dtype=str, encoding="ISO-8859-1",
+    )
+    df.columns = df.columns.str.strip()
     return df
 
 
@@ -130,17 +120,13 @@ def normalize_columns(df: pd.DataFrame) -> pd.DataFrame:
     # Shift to ~2026
     df["invoice_date"] = original + pd.Timedelta(days=DATE_SHIFT_DAYS)
 
-    # Types — handle both CSV (comma decimals) and XLSX (already numeric)
-    if df["price"].dtype == object:
-        df["quantity"] = pd.to_numeric(
-            df["quantity"].astype(str).str.replace(",", "."), errors="coerce"
-        )
-        df["price"] = pd.to_numeric(
-            df["price"].astype(str).str.replace(",", "."), errors="coerce"
-        )
-    else:
-        df["quantity"] = pd.to_numeric(df["quantity"], errors="coerce")
-        df["price"] = pd.to_numeric(df["price"], errors="coerce")
+    # Types — handle CSV comma decimals
+    df["quantity"] = pd.to_numeric(
+        df["quantity"].astype(str).str.replace(",", "."), errors="coerce"
+    )
+    df["price"] = pd.to_numeric(
+        df["price"].astype(str).str.replace(",", "."), errors="coerce"
+    )
 
     # customer_id → string (NaN → empty string)
     df["customer_id"] = (
