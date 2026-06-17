@@ -5,7 +5,7 @@ WITH known AS (
     SELECT
         customer_id,
         MIN(invoice_date) AS first_seen_date
-    FROM {{ ref('stg_bronze__transactions') }}
+    FROM {{ ref('int_transactions__prepared') }}
     WHERE customer_id != ''
     GROUP BY customer_id
 ),

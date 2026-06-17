@@ -2,8 +2,8 @@
 
 -- dim_date: unique dates from shifted invoice_date
 WITH dates AS (
-    SELECT DISTINCT CAST(invoice_date AS DATE) AS dt
-    FROM {{ ref('stg_bronze__transactions') }}
+    SELECT DISTINCT tx_date AS dt
+    FROM {{ ref('int_transactions__prepared') }}
 )
 SELECT
     ROW_NUMBER() OVER (ORDER BY dt)  AS date_sk,

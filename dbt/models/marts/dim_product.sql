@@ -9,6 +9,6 @@ FROM (
     SELECT DISTINCT
         stock_code,
         FIRST(description) OVER (PARTITION BY stock_code ORDER BY description) AS description
-    FROM {{ ref('stg_bronze__transactions') }}
+    FROM {{ ref('int_transactions__prepared') }}
 ) t
 ORDER BY product_sk
