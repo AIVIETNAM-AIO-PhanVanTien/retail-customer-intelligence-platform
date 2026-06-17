@@ -1,0 +1,141 @@
+version: 2
+
+models:
+
+  - name: dim_customer
+    description: "Customer dimension with surrogate key, includes Unknown customer at sk=0"
+    columns:
+      - name: customer_sk
+        description: "Surrogate key, 0 reserved for Unknown"
+        tests:
+          - not_null
+          - unique
+      - name: customer_id
+        description: "Business key, empty string for Unknown"
+        tests:
+          - unique
+
+  - name: dim_product
+    description: "Product dimension"
+    columns:
+      - name: product_sk
+        tests:
+          - not_null
+          - unique
+      - name: stock_code
+        tests:
+          - not_null
+          - unique
+
+  - name: dim_country
+    description: "Country dimension"
+    columns:
+      - name: country_sk
+        tests:
+          - not_null
+          - unique
+      - name: country_name
+        tests:
+          - not_null
+          - unique
+
+  - name: dim_date
+    description: "Date dimension built from distinct invoice dates"
+    columns:
+      - name: date_sk
+        tests:
+          - not_null
+          - unique
+      - name: date
+        tests:
+          - not_null
+          - unique
+      - name: year
+        tests:
+          - not_null
+      - name: month
+        tests:
+          - not_null
+
+  - name: fact_transactions
+    description: "Transaction-level fact table joined to all dimensions via surrogate keys"
+    columns:
+      - name: transaction_sk
+        tests:
+          - not_null
+          - unique
+      - name: customer_sk
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_customer')
+              field: customer_sk
+      - name: product_sk
+        tests:
+          - relationships:
+              to: ref('dim_product')
+              field: product_sk
+      - name: country_sk
+        tests:
+          - relationships:
+              to: ref('dim_country')
+              field: country_sk
+      - name: date_sk
+        tests:
+          - relationships:
+              to: ref('dim_date')
+              field: date_sk
+      - name: quantity
+        tests:
+          - not_null
+      - name: price
+        tests:
+          - not_null
+
+  - name: mart_rfm
+    description: "RFM scoring and customer segmentation"
+    columns:
+      - name: customer_id
+        tests:
+          - not_null
+          - unique
+      - name: recency_days
+        tests:
+          - not_null
+      - name: frequency
+        tests:
+          - not_null
+      - name: monetary
+        tests:
+          - not_null
+      - name: r_score
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
+      - name: f_score
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
+      - name: m_score
+        tests:
+          - not_null
+          - accepted_values:
+              values: [1, 2, 3, 4, 5]
+      - name: segment
+        tests:
+          - not_null
+          - accepted_values:
+              values:
+                - 'Champions'
+                - 'Loyal Customers'
+                - 'Potential Loyalists'
+                - 'New Customers'
+                - 'Promising'
+                - 'Cannot Lose Them'
+                - 'At Risk'
+                - 'About to Sleep'
+                - 'Hibernating'
+                - 'Lost'
+                - 'Need Attention'
