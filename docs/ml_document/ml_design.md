@@ -3,109 +3,26 @@
 **Project:** Retail Customer Intelligence Platform
 **Author:** Phúc Nhân Nguyễn (MODEL)
 **Sprint:** S1 — Discovery & Onboarding
-**Date:** 2026-06-10
-**Status:** Draft v1.3
+**Date:** 2026-06-17
+**Status:** Draft v2.0
 
 ---
 
 ## Table of Contents
 
-1. [RFM Segmentation Design](#1-rfm-segmentation-design)
-2. [Churn Label Logic](#2-churn-label-logic)
-3. [Feature Engineering Plan](#3-feature-engineering-plan)
-4. [Candidate Models](#4-candidate-models)
-5. [Evaluation Metrics & Thresholds](#5-evaluation-metrics--thresholds)
-6. [Target Metrics Summary](#6-target-metrics-summary)
+1. [Churn Label Logic](#1-churn-label-logic)
+2. [Feature Engineering Plan](#2-feature-engineering-plan)
+3. [Candidate Models](#3-candidate-models)
+4. [Evaluation Metrics & Model Selection](#4-evaluation-metrics--model-selection)
+5. [Target Metrics Summary](#5-target-metrics-summary)
 
 ---
 
-## 1. RFM Segmentation Design
+## 1. Churn Label Logic
 
-### 1.1 What is RFM?
+### 1.1 Churn Definition
 
-RFM analysis scores customers on three dimensions:
-
-| Dimension | Definition | Calculation |
-|-----------|-----------|-------------|
-| **Recency (R)** | How recently a customer made a purchase | `SNAPSHOT_DATE − last_purchase_date` (in days) |
-| **Frequency (F)** | How often a customer purchases | Count of **distinct invoices** (excluding cancellations) |
-| **Monetary (M)** | How much a customer spends | Sum of `Quantity × Price` across all valid transactions |
-
-### 1.2 Scoring Method: Quintile-Based (1–5)
-
-Each dimension is divided into **5 quintiles** using `pd.qcut()`:
-
-| Score | Meaning | Percentile Range |
-|-------|---------|-----------------| 
-| 5 | Best | 0–20th percentile (Recency) / 80–100th (F, M) |
-| 4 | Good | 20–40th / 60–80th |
-| 3 | Average | 40–60th |
-| 2 | Below Average | 60–80th / 20–40th |
-| 1 | Worst | 80–100th (Recency) / 0–20th (F, M) |
-
-> **Note:** For Recency, **lower is better** (purchased recently), so scoring is inverted: lowest days → score 5.
-
-### 1.3 RFM Score Composition
-
-```
-RFM_Score = R_Score × 100 + F_Score × 10 + M_Score
-```
-
-Example: A customer with R=5, F=4, M=3 → `RFM_Score = 543`
-
-### 1.4 Segment Mapping Rules
-
-Customers are mapped to **8 segments** based on R, F, M score combinations:
-
-| Segment | R Score | F Score | M Score | Business Meaning |
-|---------|---------|---------|---------|-----------------| 
-| **Champions** | 4–5 | 4–5 | 4–5 | Best customers: recent, frequent, high-value |
-| **Loyal Customers** | 3–5 | 3–5 | 3–5 | Consistent buyers (not necessarily top R) |
-| **Potential Loyalists** | 4–5 | 2–3 | 2–3 | Recent buyers with moderate engagement |
-| **New Customers** | 4–5 | 1 | 1–2 | Just arrived, first or second purchase |
-| **Promising** | 3–4 | 1–2 | 1–2 | Somewhat recent, low engagement |
-| **Need Attention** | 2–3 | 2–3 | 2–3 | Slipping away — average across the board |
-| **At Risk** | 1–2 | 3–5 | 3–5 | Were good customers, but haven't returned |
-| **Lost / Hibernating** | 1–2 | 1–2 | 1–2 | Low on all dimensions — disengaged |
-
-**Implementation (pseudo-code):**
-
-```python
-def assign_rfm_segment(r, f, m):
-    if r >= 4 and f >= 4 and m >= 4:
-        return "Champions"
-    elif r >= 3 and f >= 3 and m >= 3:
-        return "Loyal Customers"
-    elif r >= 4 and f <= 3 and m <= 3:
-        return "Potential Loyalists"
-    elif r >= 4 and f == 1:
-        return "New Customers"
-    elif r >= 3 and f <= 2:
-        return "Promising"
-    elif r <= 3 and f >= 2 and m >= 2:
-        return "Need Attention"
-    elif r <= 2 and (f >= 3 or m >= 3):
-        return "At Risk"
-    else:
-        return "Lost / Hibernating"
-```
-
-### 1.5 Edge Cases
-
-| Edge Case | Handling |
-|-----------|----------|
-| **Single-order customers** | F=1 by definition; segment depends on R and M |
-| **Very high spenders with few orders** | High M, low F → may map to "Need Attention" or "At Risk" depending on R |
-| **Quintile ties** (many customers with same value) | `pd.qcut(..., duplicates='drop')` to handle ties; fallback to rank-based if needed |
-| **Customers with only cancellations** | Excluded — no valid orders, no RFM score |
-
----
-
-## 2. Churn Label Logic
-
-### 2.1 Churn Definition
-
-> **A customer has churned if they have NOT made any purchase within a defined inactivity window after their last observed purchase, measured from the snapshot date.**
+> **A customer has churned if they have NOT made any purchase within a defined evaluation window, measured from the observation cutoff date.**
 
 This is a **binary label** for supervised classification:
 
@@ -114,44 +31,45 @@ This is a **binary label** for supervised classification:
 | **Not Churned** | `0` | Customer made at least 1 purchase in the **evaluation period** |
 | **Churned** | `1` | Customer made **zero** purchases in the **evaluation period** |
 
-### 2.2 Temporal Split Design
+### 1.2 Temporal Split Design
 
-To create the churn label without data leakage, we split the 24-month timeline into two windows:
+To create the churn label without data leakage, we split the timeline into two windows. The timestamps below are **day-shifted to the current date** — when working with the actual dataset (Dec 2009 – Dec 2011), all dates will be shifted forward so that the end of the evaluation period aligns with the current date (~June 2026).
 
 ```
-|<------------ Observation Period ------------->|<--- Evaluation Period --->|
-|  Dec 2009 ──────────────────── Jun 2011       |  Jul 2011 ─── Dec 2011   |
-|  Features computed from this period           |  Label derived from here  |
-|  (~18 months)                                 |  (~6 months)              |
+|<------------ Observation Period ----------------->|<-- Evaluation Period -->|
+|  ~21 months of purchase history                   |  3 months              |
+|  Features computed from this period               |  Label derived here    |
 ```
 
-| Period | Start | End | Duration | Purpose |
-|--------|-------|-----|----------|---------|
-| **Observation** | 1 Dec 2009 | 30 Jun 2011 | ~18 months | Compute RFM, features |
-| **Evaluation** | 1 Jul 2011 | 4 Dec 2011 | ~5 months | Determine churn label |
+| Period | Duration | Purpose |
+|--------|----------|---------|
+| **Observation** | ~21 months | Compute features (R, F, M, behavioral, temporal, etc.) |
+| **Evaluation** | 3 months | Determine churn label (purchased or not) |
 
-**Churn label:**
+> **Note on day-shifting:** The original dataset spans Dec 2009 – Dec 2011. All timestamps will be shifted forward so the final transaction date aligns with the current date. This ensures the model operates on a realistic time horizon relative to "today" for inference purposes. The relative durations (21-month observation, 3-month evaluation) remain unchanged regardless of the shift.
+
+**Churn label logic:**
 
 ```python
-OBSERVATION_END = datetime(2011, 6, 30)
-EVALUATION_START = datetime(2011, 7, 1)
+# After day-shifting, define the cutoff
+OBSERVATION_END = SHIFTED_MAX_DATE - timedelta(days=90)  # ~3 months before end
+EVALUATION_START = OBSERVATION_END + timedelta(days=1)
 
 # For each customer:
-last_purchase_in_eval = max(InvoiceDate) where InvoiceDate >= EVALUATION_START
-
+# Count purchases in [EVALUATION_START, SHIFTED_MAX_DATE]
 churn_label = 1 if (customer has NO purchases in evaluation period) else 0
 ```
 
-### 2.3 Why 6-Month Evaluation Window?
+### 1.3 Why 3-Month Evaluation Window?
 
 | Consideration | Reasoning |
 |---------------|-----------|
-| **Business cycle** | Retail customers may have seasonal patterns (Christmas, etc.) — 6 months captures at least one major season |
-| **Dataset length** | With ~24 months of data, 18/6 split gives sufficient observation data for features |
-| **Industry standard** | 3–6 months is standard for B2C retail churn definitions |
-| **Balance** | Shorter windows (e.g., 30 days) would label too many as churned; longer windows reduce training data |
+| **Sufficient signal** | 90 days gives customers reasonable time to return if they are still active |
+| **Data preservation** | A shorter evaluation window preserves more data (~21 months) for feature engineering |
+| **Industry practice** | 3 months is a widely used threshold for B2C retail churn |
+| **Balance** | Avoids over-labeling (30-day window) while retaining enough training data (vs. 6-month window) |
 
-### 2.4 Expected Class Distribution
+### 1.4 Expected Class Distribution
 
 Based on the dataset characteristics (many one-time buyers), we expect:
 
@@ -160,131 +78,150 @@ Based on the dataset characteristics (many one-time buyers), we expect:
 | **Churned (1)** | ~60–70% | Many customers are infrequent / one-time buyers |
 | **Not Churned (0)** | ~30–40% | Loyal repeat customers who persist into evaluation period |
 
-> **Imbalanced dataset** → must handle in model training (see §4.4).
-
-### 2.5 Alternative Churn Definitions Considered
-
-| Alternative | Why Not Used |
-|-------------|-------------|
-| **Days since last purchase > X** | Static threshold doesn't account for purchase frequency differences |
-| **Purchase frequency drop > 50%** | Complex to compute, requires stable baseline for each customer |
-| **RFM score < threshold** | Circular — using RFM to define churn would bias the model |
+> **Imbalanced dataset** → must handle in model training (see §3.4).
 
 ---
 
-## 3. Feature Engineering Plan
+## 2. Feature Engineering Plan
 
-### 3.1 Feature Categories
+### 2.1 Data Source: Silver Layer
 
-All features are computed from the **observation period** only (Dec 2009 – Jun 2011) to prevent data leakage.
+All features are engineered from the **silver layer** (`stg_bronze__transactions`) during the **observation period** only to prevent data leakage.
 
-#### 3.1.1 RFM Core Features
+The silver layer provides the following columns per transaction row:
 
-| Feature | Description | Type |
-|---------|-------------|------|
-| `recency_days` | Days since last purchase to `OBSERVATION_END` | int |
-| `frequency` | Count of distinct invoices | int |
-| `monetary` | Total revenue (`Quantity × Price`) | float |
-| `r_score` | Recency quintile score (1–5) | int |
-| `f_score` | Frequency quintile score (1–5) | int |
-| `m_score` | Monetary quintile score (1–5) | int |
-| `rfm_segment` | Categorical segment label | string |
+| Column | Type | Description |
+|--------|------|-------------|
+| `invoice` | string | Invoice number |
+| `stock_code` | string | Product code |
+| `description` | string | Product description |
+| `quantity` | int | Quantity purchased (negative for cancellations) |
+| `price` | float | Unit price |
+| `customer_id` | string | Customer identifier |
+| `country` | string | Country of purchase |
+| `is_cancellation` | bool | Whether invoice is a cancellation |
+| `line_amount` | float | `quantity × price` |
+| `invoice_date` | datetime | Transaction timestamp |
+| `invoice_year`, `invoice_month`, etc. | int | Extracted date parts |
 
-#### 3.1.2 Behavioral Features
+### 2.2 Feature Categories
 
-| Feature | Description | Type |
-|---------|-------------|------|
-| `avg_order_value` (AOV) | `monetary / frequency` | float |
-| `avg_basket_size` | Avg number of items per order | float |
-| `avg_unit_price` | Avg price per item purchased | float |
-| `total_quantity` | Total items purchased | int |
-| `unique_products` | Count of distinct `StockCode` | int |
-| `unique_categories` | Approximate product category count | int |
+#### 2.2.1 RFM Raw Features
 
-#### 3.1.3 Temporal Features
+These are the **raw** Recency, Frequency, and Monetary values — no quintile scores or segment labels.
 
-| Feature | Description | Type |
-|---------|-------------|------|
-| `tenure_days` | Days between first and last purchase | int |
-| `avg_days_between_orders` | Mean inter-purchase interval | float |
-| `std_days_between_orders` | Std dev of inter-purchase interval (regularity) | float |
-| `days_since_first_purchase` | `OBSERVATION_END - first_purchase_date` | int |
-| `order_trend` | Slope of order-count per month (increasing/decreasing) | float |
-| `is_one_time_buyer` | 1 if `frequency = 1`, else 0 | binary |
+| Feature | Description | Source Computation | Type |
+|---------|-------------|-------------------|------|
+| `recency_days` | Days since last purchase to `OBSERVATION_END` | `OBSERVATION_END − MAX(invoice_date)` per customer | int |
+| `frequency` | Count of distinct valid invoices | `COUNT(DISTINCT invoice) WHERE is_cancellation = false` | int |
+| `monetary` | Total revenue from valid transactions | `SUM(line_amount) WHERE is_cancellation = false` | float |
 
-#### 3.1.4 Engagement Features
+> **Rationale for raw R/F/M only:** Quintile scores (`r_score`, `f_score`, `m_score`) and `rfm_segment` are excluded because they are discretized transformations of the raw values. Using raw continuous values preserves the full information and avoids information loss from binning. Tree-based models (Random Forest, XGBoost) can capture non-linear patterns from raw values directly.
 
-| Feature | Description | Type |
-|---------|-------------|------|
-| `cancellation_rate` | `cancel_orders / total_orders` | float |
-| `return_quantity_rate` | `abs(negative_qty) / total_qty` | float |
-| `weekend_purchase_ratio` | Fraction of orders placed on weekends | float |
-| `distinct_countries` | Number of countries customer ordered from | int |
+#### 2.2.2 Behavioral Features
 
-#### 3.1.5 Monetary Pattern Features
+| Feature | Description | Source Computation | Type |
+|---------|-------------|-------------------|------|
+| `avg_order_value` | Average revenue per order | `monetary / frequency` | float |
+| `avg_basket_size` | Avg items per order | `SUM(quantity) / COUNT(DISTINCT invoice)` (valid only) | float |
+| `avg_unit_price` | Avg price per item | `SUM(price × quantity) / SUM(quantity)` (valid only) | float |
+| `total_quantity` | Total items purchased | `SUM(quantity) WHERE is_cancellation = false` | int |
+| `unique_products` | Distinct products purchased | `COUNT(DISTINCT stock_code)` | int |
 
-| Feature | Description | Type |
-|---------|-------------|------|
-| `ltv` (Lifetime Value) | Same as `monetary` for observation period | float |
-| `monetary_trend` | Slope of monthly revenue (growing/shrinking) | float |
-| `max_single_order_value` | Largest single order value | float |
-| `min_single_order_value` | Smallest single order value | float |
+#### 2.2.3 Temporal Features
 
-### 3.2 Feature Summary
+| Feature | Description | Source Computation | Type |
+|---------|-------------|-------------------|------|
+| `tenure_days` | Days between first and last purchase | `MAX(invoice_date) − MIN(invoice_date)` | int |
+| `avg_days_between_orders` | Mean inter-purchase interval | Mean of gaps between consecutive `invoice_date` values | float |
+| `std_days_between_orders` | Regularity of purchases | Std dev of inter-purchase gaps | float |
+| `days_since_first_purchase` | Customer lifetime span | `OBSERVATION_END − MIN(invoice_date)` | int |
+| `is_one_time_buyer` | Single-purchase customer flag | `1 if frequency = 1 else 0` | binary |
+
+#### 2.2.4 Engagement Features
+
+| Feature | Description | Source Computation | Type |
+|---------|-------------|-------------------|------|
+| `cancellation_rate` | Proportion of cancelled orders | `COUNT(invoice WHERE is_cancellation) / COUNT(DISTINCT invoice)` | float |
+| `return_quantity_rate` | Proportion of returned items | `ABS(SUM(quantity WHERE quantity < 0)) / SUM(quantity WHERE quantity > 0)` | float |
+| `weekend_purchase_ratio` | Weekend shopping tendency | `COUNT(invoice WHERE invoice_day_of_week IN (6,7)) / COUNT(invoice)` | float |
+
+#### 2.2.5 Monetary Pattern Features
+
+| Feature | Description | Source Computation | Type |
+|---------|-------------|-------------------|------|
+| `monetary_trend` | Spending direction over time | Linear regression slope of monthly revenue | float |
+| `max_single_order_value` | Largest single order | `MAX(SUM(line_amount) GROUP BY invoice)` | float |
+| `min_single_order_value` | Smallest single order | `MIN(SUM(line_amount) GROUP BY invoice)` | float |
+
+### 2.3 Feature Summary
 
 | Category | Count | Key Features |
 |----------|-------|-------------|
-| RFM Core | 7 | R, F, M scores + segment |
-| Behavioral | 6 | AOV, basket size, product diversity |
-| Temporal | 6 | Tenure, order gaps, trend |
-| Engagement | 4 | Cancellation rate, weekend ratio |
-| Monetary Pattern | 4 | LTV, trends, min/max orders |
-| **Total** | **~27** | |
+| RFM Raw | 3 | recency_days, frequency, monetary |
+| Behavioral | 5 | AOV, basket size, product diversity |
+| Temporal | 5 | Tenure, order gaps, one-time buyer flag |
+| Engagement | 3 | Cancellation rate, return rate, weekend ratio |
+| Monetary Pattern | 3 | Spending trend, max/min order value |
+| **Total** | **~19** | |
 
-### 3.3 Feature Engineering Pipeline
+### 2.4 Feature Engineering Pipeline
 
 ```
-fact_transactions (Gold layer)
+stg_bronze__transactions (Silver layer)
     │
-    ├── Aggregate per customer (observation period only)
-    │   ├── RFM core: last_date, count(invoice), sum(qty*price)
-    │   ├── Behavioral: avg basket, unique products
-    │   ├── Temporal: first_date, inter-purchase gaps
-    │   └── Engagement: cancel count, return qty
+    ├── Filter: observation period only (invoice_date <= OBSERVATION_END)
+    │
+    ├── Aggregate per customer_id
+    │   ├── RFM raw: MAX(invoice_date), COUNT(DISTINCT invoice), SUM(line_amount)
+    │   ├── Behavioral: SUM(quantity), COUNT(DISTINCT stock_code), AVG(price)
+    │   ├── Temporal: MIN(invoice_date), inter-purchase gaps
+    │   └── Engagement: COUNT(is_cancellation=true), SUM(negative qty)
     │
     ├── Compute derived features
-    │   ├── Quintile scores (R, F, M)
-    │   ├── Ratios (AOV, cancel rate)
-    │   └── Trends (order_trend, monetary_trend via linear regression slope)
+    │   ├── Ratios: AOV, cancel_rate, return_qty_rate, weekend_ratio
+    │   ├── Trends: monetary_trend via linear regression slope on monthly revenue
+    │   └── Flags: is_one_time_buyer
     │
-    └── Output: mart_customer_features (one row per customer)
+    └── Output: customer feature matrix (one row per customer_id)
 ```
 
 ---
 
-## 4. Candidate Models
+## 3. Candidate Models
 
-### 4.1 Model Selection Strategy
+### 3.1 Model Selection Strategy
 
-We follow a **two-model approach** as specified in the project plan:
+We follow a **three-model approach**: one baseline + two tree-based models for comparison.
 
 | Model | Role | Why |
 |-------|------|-----|
 | **Logistic Regression (LR)** | Baseline | Interpretable, fast, establishes performance floor |
-| **XGBoost** | Primary | Handles non-linearity, feature interactions, typically best for tabular data |
+| **Random Forest (RF)** | Candidate | Robust ensemble, handles non-linearity, less prone to overfitting than single trees |
+| **XGBoost** | Candidate | Gradient boosting handles feature interactions, typically best for tabular data |
 
-### 4.2 Logistic Regression (Baseline)
+### 3.2 Logistic Regression (Baseline)
 
 | Aspect | Detail |
 |--------|--------|
 | **Library** | `sklearn.linear_model.LogisticRegression` |
-| **Preprocessing** | StandardScaler for numerical features; OneHotEncoder for categorical |
+| **Preprocessing** | StandardScaler for all numerical features |
 | **Regularization** | L2 (Ridge) default; search over `C = [0.01, 0.1, 1, 10]` |
 | **Class weight** | `class_weight='balanced'` to handle imbalance |
 | **Strengths** | Fully interpretable coefficients, fast training, strong baseline |
 | **Weaknesses** | Cannot capture feature interactions or non-linear patterns |
 
-### 4.3 XGBoost (Primary)
+### 3.3 Random Forest (Candidate)
+
+| Aspect | Detail |
+|--------|--------|
+| **Library** | `sklearn.ensemble.RandomForestClassifier` |
+| **Key hyperparameters** | `n_estimators: [100, 200, 300]`, `max_depth: [5, 10, 15, None]`, `min_samples_split: [2, 5, 10]`, `min_samples_leaf: [1, 2, 4]`, `max_features: ['sqrt', 'log2']` |
+| **Imbalance handling** | `class_weight='balanced'` |
+| **Strengths** | Robust to outliers, handles non-linearity, built-in feature importance, less prone to overfitting |
+| **Weaknesses** | Slower than LR, less interpretable than LR, can underperform XGBoost on structured data |
+
+### 3.4 XGBoost (Candidate)
 
 | Aspect | Detail |
 |--------|--------|
@@ -293,20 +230,20 @@ We follow a **two-model approach** as specified in the project plan:
 | **Imbalance handling** | `scale_pos_weight = count(class_0) / count(class_1)` |
 | **Early stopping** | `early_stopping_rounds=20` on validation AUC |
 | **Strengths** | Handles non-linearity, feature interactions, missing values, built-in regularization |
-| **Weaknesses** | Less interpretable (mitigated by SHAP in S4) |
+| **Weaknesses** | Less interpretable (mitigated by SHAP in S4), more hyperparameters to tune |
 
-### 4.4 Handling Class Imbalance
+### 3.5 Handling Class Imbalance
 
 | Technique | Applied To | Description |
 |-----------|-----------|-------------|
-| **Class weights** | LR | `class_weight='balanced'` |
+| **Class weights** | LR, RF | `class_weight='balanced'` |
 | **scale_pos_weight** | XGBoost | Ratio of negative to positive class |
-| **Stratified splits** | Both | `StratifiedKFold` ensures each fold has same class ratio |
-| **Threshold tuning** | Both | Optimize classification threshold for business objective (see §5) |
+| **Stratified splits** | All | `StratifiedKFold` ensures each fold has same class ratio |
+| **Threshold tuning** | All | Optimize classification threshold for business objective (see §4) |
 
 > **Note:** We do NOT use SMOTE/oversampling initially. Class weights are simpler and avoid synthetic data artifacts. If results are poor, SMOTE can be added as an iteration.
 
-### 4.5 Cross-Validation Strategy
+### 3.6 Cross-Validation Strategy
 
 ```
 5-Fold Stratified Cross-Validation
@@ -327,27 +264,26 @@ Report: Mean ± Std for each metric across folds
 | Hyperparameter search | `GridSearchCV` or `RandomizedSearchCV` on training folds |
 | Final evaluation | Hold-out test set (20% stratified split before CV) |
 
-### 4.6 Training Pipeline
+### 3.7 Training Pipeline
 
 ```
-mart_customer_features
+customer_feature_matrix (from §2.4)
     │
     ├── Train/Test Split (80/20, stratified)
     │
     ├── Preprocessing Pipeline (sklearn Pipeline)
-    │   ├── Numerical: SimpleImputer(median) → StandardScaler
-    │   └── Categorical: SimpleImputer(most_frequent) → OneHotEncoder
+    │   └── Numerical: SimpleImputer(median) → StandardScaler
     │
     ├── Model 1: LogisticRegression (baseline)
     │   └── GridSearchCV (C, penalty)
     │
-    ├── Model 2: XGBClassifier (primary)
+    ├── Model 2: RandomForestClassifier (candidate)
+    │   └── RandomizedSearchCV (n_estimators, max_depth, min_samples_split, ...)
+    │
+    ├── Model 3: XGBClassifier (candidate)
     │   └── RandomizedSearchCV (depth, estimators, lr, subsample)
     │
-    ├── Evaluation on Test Set
-    │   ├── AUC-ROC, Precision, Recall, F1
-    │   ├── Confusion Matrix
-    │   └── Threshold Optimization (Precision-Recall curve)
+    ├── Evaluation on Test Set (see §4)
     │
     └── MLflow Logging
         ├── Parameters, metrics, artifacts
@@ -356,32 +292,70 @@ mart_customer_features
 
 ---
 
-## 5. Evaluation Metrics & Thresholds
+## 4. Evaluation Metrics & Model Selection
 
-### 5.1 Primary Metrics
+### 4.1 Evaluation Metrics
 
-| Metric | Formula | Why It Matters | Target |
-|--------|---------|---------------|--------|
-| **AUC-ROC** | Area under ROC curve | Overall discriminative power, threshold-independent | **≥ 0.80** (QA gate) |
-| **Precision** | TP / (TP + FP) | Of predicted churners, how many actually churned? | ≥ 0.70 |
-| **Recall** | TP / (TP + FN) | Of actual churners, how many did we catch? | ≥ 0.75 |
-| **F1-Score** | 2 × (P × R) / (P + R) | Harmonic mean — balanced precision/recall | ≥ 0.72 |
+Each model is evaluated on the held-out test set using the following metrics:
 
-### 5.2 Secondary Metrics
+| Metric | Description | Why It Matters |
+|--------|-------------|----------------|
+| **Accuracy** | `(TP + TN) / (TP + TN + FP + FN)` | Overall correctness; reference metric (interpret with caution on imbalanced data) |
+| **Classification Report** | Precision, Recall, F1-Score per class + macro/weighted avg | Detailed per-class performance breakdown |
+| **Confusion Matrix** | 2×2 matrix of TP, FP, FN, TN | Visual understanding of error types and their distribution |
+| **AUC-ROC** | Area under the ROC curve | Threshold-independent measure of discriminative power |
 
-| Metric | Purpose |
-|--------|---------|
-| **Precision-Recall AUC** | Better than ROC-AUC for imbalanced datasets |
-| **Log Loss** | Calibration quality of predicted probabilities |
-| **Confusion Matrix** | Visual understanding of TP/FP/TN/FN |
-| **Brier Score** | Probability calibration accuracy |
+**Classification Report structure:**
 
-### 5.3 Threshold Optimization
+```
+              precision    recall  f1-score   support
+
+   Not Churn     ...        ...      ...       ...
+       Churn     ...        ...      ...       ...
+
+    accuracy                          ...       ...
+   macro avg     ...        ...      ...       ...
+weighted avg     ...        ...      ...       ...
+```
+
+**Confusion Matrix structure:**
+
+```
+                  Predicted
+                  Not Churn    Churn
+Actual Not Churn  [   TN    |   FP   ]
+       Churn      [   FN    |   TP   ]
+```
+
+### 4.2 Model Comparison Table
+
+All models are compared side-by-side on the test set to select the best performer:
+
+| Metric | Logistic Regression (Baseline) | Random Forest | XGBoost |
+|--------|-------------------------------|---------------|---------|
+| Accuracy | — | — | — |
+| Precision (Churn) | — | — | — |
+| Recall (Churn) | — | — | — |
+| F1-Score (Churn) | — | — | — |
+| AUC-ROC | — | — | — |
+
+> Values to be filled after training. The **best model** is selected based on the highest **AUC-ROC** as the primary criterion, with **F1-Score** as the tiebreaker.
+
+### 4.3 Model Selection Criteria
+
+The best model is selected using the following priority:
+
+1. **AUC-ROC ≥ 0.80** (QA gate — must pass)
+2. **Highest AUC-ROC** among passing models
+3. **F1-Score** as tiebreaker if AUC-ROC is similar (within 0.01)
+4. **Simplicity preference**: if performance is comparable, prefer simpler models (LR > RF > XGBoost)
+
+### 4.4 Threshold Optimization
 
 The default threshold of `0.5` is rarely optimal for imbalanced data. We will:
 
-1. Plot the **Precision-Recall curve**
-2. Find the threshold that maximizes **F1-score** (or a business-specified precision/recall trade-off)
+1. Plot the **Precision-Recall curve** for the best model
+2. Find the threshold that maximizes **F1-score**
 3. Report results at both `0.5` and the optimized threshold
 
 ```python
@@ -392,17 +366,7 @@ f1_scores = 2 * (precisions * recalls) / (precisions + recalls + 1e-8)
 optimal_threshold = thresholds[f1_scores.argmax()]
 ```
 
-### 5.4 Business Context for Metrics
-
-| Scenario | Priority | Threshold Strategy |
-|----------|----------|-------------------|
-| **Retention campaign (email/discount)** | High Recall | Lower threshold → catch more churners, accept some false positives |
-| **Expensive intervention (phone call/gift)** | High Precision | Higher threshold → only target customers we're confident will churn |
-| **General scoring** | Balanced (F1) | Optimized threshold from PR curve |
-
-### 5.5 Quality Gate (QA Requirement)
-
-From the project plan (QA role):
+### 4.5 Quality Gate (QA Requirement)
 
 > **AUC gate > 0.80** — model must achieve AUC-ROC ≥ 0.80 on the held-out test set to pass validation.
 
@@ -410,43 +374,32 @@ If the gate is not met:
 1. Review feature engineering (add/remove features)
 2. Try feature selection (remove noise)
 3. Adjust hyperparameter search space
-4. Consider additional models (Random Forest, LightGBM) as fallback
+4. Consider additional models (LightGBM, CatBoost) as fallback
 
 ---
 
-## 6. Target Metrics Summary
+## 5. Target Metrics Summary
 
-### 6.1 RFM Metrics (S2 Deliverable)
-
-| Metric | Description | Target |
-|--------|-------------|--------|
-| Segment coverage | All customers assigned to exactly one segment | 100% |
-| Revenue reconciliation | Sum of segment revenues = total valid revenue | Δ < 0.01% |
-| Segment count | 8 meaningful segments with non-zero membership | 8/8 populated |
-| Champions % | Expected top-tier percentage | 5–15% of customers |
-| Lost % | Expected bottom-tier percentage | 15–30% of customers |
-
-### 6.2 Churn Model Metrics (S3 Deliverable)
+### 5.1 Churn Model Metrics (S3 Deliverable)
 
 | Metric | Target | Hard Gate |
 |--------|--------|-----------|
 | AUC-ROC | ≥ 0.80 | Yes (QA gate) |
-| Precision | ≥ 0.70 | No |
-| Recall | ≥ 0.75 | No |
-| F1-Score | ≥ 0.72 | No |
+| Precision (Churn) | ≥ 0.70 | No |
+| Recall (Churn) | ≥ 0.75 | No |
+| F1-Score (Churn) | ≥ 0.72 | No |
 | Cross-validation stability | Std(AUC) < 0.03 across folds | No |
 
-### 6.3 Batch Scoring Output (S3 Deliverable)
+### 5.2 Batch Scoring Output (S3 Deliverable)
 
 | Output Column | Type | Description |
 |---------------|------|-------------|
 | `customer_id` | string | Unique customer identifier |
 | `churn_probability` | float [0, 1] | Model-predicted probability of churn |
 | `churn_flag` | int {0, 1} | Binary label at optimized threshold |
-| `rfm_segment` | string | RFM segment label |
 | `risk_tier` | string | `High / Medium / Low` based on probability buckets |
 
-### 6.4 Explainability Metrics (S4 Deliverable)
+### 5.3 Explainability Metrics (S4 Deliverable)
 
 | Deliverable | Method | Description |
 |-------------|--------|-------------|
