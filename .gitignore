@@ -237,6 +237,7 @@ data/gold/**/*.json
 
 # DuckDB database
 *.duckdb
+dbt/.local_duckdb/
 
 # Large raw data files (download separately)
 data/raw/*.zip

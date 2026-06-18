@@ -99,3 +99,10 @@ def silver_like_df() -> pd.DataFrame:
             "year_month": ["2024-06", "2024-06", "2024-06", "2024-06", "2024-06"],
         }
     )
+
+
+def pytest_configure(config: pytest.Config) -> None:
+    config.addinivalue_line(
+        "markers",
+        "integration: tests that require built data/ artifacts (bronze, silver, gold, duckdb)",
+    )

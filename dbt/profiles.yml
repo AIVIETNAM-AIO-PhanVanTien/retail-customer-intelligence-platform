@@ -1,3 +1,7 @@
+# DuckDB path is relative to this dbt/ folder.
+# If DataGrip (or another app) locks data/retail.duckdb, use:
+#   ../scripts/dbt_test.sh
+# from repo root, or disconnect the DB in DataGrip first.
 retail_duckdb:
   target: dev
   outputs:
