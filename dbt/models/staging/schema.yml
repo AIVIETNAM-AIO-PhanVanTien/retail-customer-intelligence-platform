@@ -2,37 +2,36 @@ version: 2
 models:
   - name: stg_silver__transactions
     description: "Cleaned transactions from Silver layer parquet files, deduplicated and filtered for noise"
+    description: "1:1 mirror of validated Silver Parquet (Python silver_transform output)"
     columns:
       - name: invoice
-        description: "Invoice number"
         tests:
           - not_null
       - name: stock_code
-        description: "Product stock code"
         tests:
           - not_null
       - name: customer_id
-        description: "Customer identifier, empty string for unknown customers"
+        description: "Empty string for guest / unknown customers"
       - name: quantity
-        description: "Quantity purchased"
         tests:
           - not_null
       - name: price
-        description: "Unit price"
         tests:
           - not_null
       - name: line_amount
-        description: "quantity * price"
         tests:
           - not_null
       - name: is_cancellation
-        description: "Flag for cancelled orders"
         tests:
           - not_null
       - name: invoice_date
-        description: "Date-shifted invoice timestamp"
         tests:
           - not_null
       - name: country
         description: "Customer's country"
         
+        tests:
+          - not_null
+      - name: year_month
+        tests:
+          - not_null

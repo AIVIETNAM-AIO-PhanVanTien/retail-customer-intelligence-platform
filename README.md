@@ -93,7 +93,12 @@ Raw load   →    Clean · dedup  →    Star schema    →    KPI marts    → 
 ├── powerbi/                 # Power BI report (.pbix) + data model — primary dashboard
 ├── data/                    # local volume (Bronze/Silver/Gold) — gitignored
 ├── notebooks/               # eda.ipynb, profiling
-├── tests/                   # pytest: transform funcs, DAG integrity, date-shift logic
+├── tests/                   # pytest by Medallion layer
+│   ├── conftest.py          # shared fixtures (bronze_like_df, silver_like_df)
+│   ├── bronze/              # bronze ingest
+│   ├── silver/              # silver transform + data quality utility
+│   ├── gold/                # star schema + RFM
+│   └── cross_layer/         # Bronze→Silver→Gold QA + integration
 ├── docs/                    # planning/ · naming_convention/ · jira/ · BRD.md ·
 │                            # Solution_Architecture.md · ml_design.md · test_plan.md · business_impact.md
 ├── report/                  # LaTeX technical report (AIConquer2026_Kit, 4 sections)

@@ -190,6 +190,7 @@ def build_fact_transactions(
         "quantity",
         "price",
         "line_amount",
+        "is_cancellation",
     ]
     null_fk = int(fact["customer_sk"].isna().sum())
     print(f"  fact_transactions: {len(fact)} rows (customer_sk null: {null_fk})")
