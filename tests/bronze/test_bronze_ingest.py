@@ -1,5 +1,6 @@
 """Tests for Bronze ingestion."""
 
+import shutil
 from pathlib import Path
 
 import pandas as pd
@@ -140,6 +141,57 @@ class TestIngest:
         log_path = bronze_dir / "_ingestion_log.csv"
         assert log_path.exists()
 
+    def test_ingest_all_row_count_matches_source(self, tmp_path, monkeypatch):
+        """B1: total Bronze rows across partitions equals normalized source rows."""
+        raw = tmp_path / "raw.csv"
+        raw.write_text(
+            "Invoice;StockCode;Description;Quantity;InvoiceDate;Price;Customer ID;Country\n"
+            "489434;85048;Ball;12;01.12.2009 07:45;6,95;13085;United Kingdom\n"
+            "489434;85048;Ball;12;01.12.2009 07:45;6,95;13085;United Kingdom\n"
+            "489435;79323P;Lights;6;15.06.2010 10:00;3,50;13086;France\n"
+            "489436;22087;Lace;3;20.01.2011 14:00;2,95;13087;Germany\n",
+            encoding="utf-8",
+        )
+        bronze_dir = tmp_path / "bronze"
+        bronze_dir.mkdir()
+
+        monkeypatch.setattr(bronze_ingest, "RAW_PATH", raw)
+        monkeypatch.setattr(bronze_ingest, "BRONZE_DIR", bronze_dir)
+
+        source_df = bronze_ingest.normalize_columns(bronze_ingest._load_raw_all(raw))
+        bronze_ingest.ingest_all(raw)
+
+        bronze_rows = 0
+        for part in bronze_dir.glob("year_month=*/data.parquet"):
+            bronze_rows += pq.ParquetFile(part).read().num_rows
+
+        assert bronze_rows == len(source_df)
+        assert bronze_rows > 0
+
+    def test_ingestion_log_records_row_count(self, tmp_path, monkeypatch):
+        """B5: audit log captures rows_loaded per partition."""
+        raw = tmp_path / "raw.csv"
+        raw.write_text(
+            "Invoice;StockCode;Description;Quantity;InvoiceDate;Price;Customer ID;Country\n"
+            "489434;85048;Ball;12;01.12.2009 07:45;6,95;13085;United Kingdom\n"
+            "489435;79323P;Lights;6;02.12.2009 10:00;3,50;13086;France\n",
+            encoding="utf-8",
+        )
+        bronze_dir = tmp_path / "bronze"
+        bronze_dir.mkdir()
+
+        monkeypatch.setattr(bronze_ingest, "RAW_PATH", raw)
+        monkeypatch.setattr(bronze_ingest, "BRONZE_DIR", bronze_dir)
+
+        months = bronze_ingest._discover_months(raw)
+        bronze_ingest.ingest(months[0], raw_path=raw)
+
+        log = pd.read_csv(bronze_dir / "_ingestion_log.csv")
+        pq_rows = pq.ParquetFile(
+            bronze_dir / f"year_month={months[0]}" / "data.parquet"
+        ).read().num_rows
+        assert int(log.iloc[-1]["row_count"]) == pq_rows
+
     def test_ingest_is_idempotent(self, tmp_path, monkeypatch):
         bronze_dir = tmp_path / "bronze" / "year_month=2024-06"
         bronze_dir.mkdir(parents=True)
@@ -149,6 +201,60 @@ class TestIngest:
 
         bronze_ingest.ingest("2024-06")
         assert (bronze_dir / "data.parquet").read_bytes() == b"already_here"
+
+    def test_each_partition_row_count_matches_source(self, tmp_path, monkeypatch):
+        """B2: each Bronze partition row count equals the normalized source slice."""
+        raw = tmp_path / "raw.csv"
+        raw.write_text(
+            "Invoice;StockCode;Description;Quantity;InvoiceDate;Price;Customer ID;Country\n"
+            "489434;85048;Ball;12;01.12.2009 07:45;6,95;13085;United Kingdom\n"
+            "489435;79323P;Lights;6;15.06.2010 10:00;3,50;13086;France\n"
+            "489436;22087;Lace;3;20.01.2011 14:00;2,95;13087;Germany\n",
+            encoding="utf-8",
+        )
+        bronze_dir = tmp_path / "bronze"
+        bronze_dir.mkdir()
+
+        monkeypatch.setattr(bronze_ingest, "RAW_PATH", raw)
+        monkeypatch.setattr(bronze_ingest, "BRONZE_DIR", bronze_dir)
+
+        source_df = bronze_ingest.normalize_columns(bronze_ingest._load_raw_all(raw))
+        source_df["_ym"] = source_df["invoice_date"].dt.to_period("M").astype(str)
+
+        bronze_ingest.ingest_all(raw)
+
+        for part in bronze_dir.glob("year_month=*/data.parquet"):
+            ym = part.parent.name.split("=")[1]
+            pq_rows = pq.ParquetFile(part).read().num_rows
+            expected = int((source_df["_ym"] == ym).sum())
+            assert pq_rows == expected, f"partition {ym}: parquet={pq_rows}, source={expected}"
+
+    def test_reingest_after_delete_preserves_row_count(self, tmp_path, monkeypatch):
+        """B4: delete partition then re-ingest yields the same row count."""
+        raw = tmp_path / "raw.csv"
+        raw.write_text(
+            "Invoice;StockCode;Description;Quantity;InvoiceDate;Price;Customer ID;Country\n"
+            "489434;85048;Ball;12;01.12.2009 07:45;6,95;13085;United Kingdom\n"
+            "489435;79323P;Lights;6;02.12.2009 10:00;3,50;13086;France\n",
+            encoding="utf-8",
+        )
+        bronze_dir = tmp_path / "bronze"
+        bronze_dir.mkdir()
+
+        monkeypatch.setattr(bronze_ingest, "RAW_PATH", raw)
+        monkeypatch.setattr(bronze_ingest, "BRONZE_DIR", bronze_dir)
+
+        months = bronze_ingest._discover_months(raw)
+        bronze_ingest.ingest(months[0], raw_path=raw)
+        part_dir = bronze_dir / f"year_month={months[0]}"
+        first_count = pq.ParquetFile(part_dir / "data.parquet").read().num_rows
+
+        shutil.rmtree(part_dir)
+        bronze_ingest.ingest(months[0], raw_path=raw)
+        second_count = pq.ParquetFile(part_dir / "data.parquet").read().num_rows
+
+        assert second_count == first_count
+        assert second_count > 0
 
 
 class TestIngestAllIteration:

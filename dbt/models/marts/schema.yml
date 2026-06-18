@@ -91,6 +91,12 @@ models:
       - name: price
         tests:
           - not_null
+      - name: line_amount
+        tests:
+          - not_null
+      - name: is_cancellation
+        tests:
+          - not_null
 
   - name: mart_rfm
     description: "RFM scoring and customer segmentation"
