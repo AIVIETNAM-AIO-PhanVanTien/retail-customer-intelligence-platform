@@ -20,7 +20,7 @@ shap>=0.45.0                # Feature explainability
 joblib>=1.3.0
 
 # ─── ML Tracking ───
-mlflow>=2.14.0              # Experiment tracking + model registry
+mlflow==2.11.0              # Experiment tracking + model registry
 
 # ─── Orchestration (local dev) ───
 # apache-airflow>=2.9.0    # Installed inside Docker container, not locally

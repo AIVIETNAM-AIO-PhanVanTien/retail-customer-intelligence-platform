@@ -247,6 +247,11 @@ models/*.pkl
 models/*.joblib
 !models/.gitkeep
 
+# ML artifacts (trained pipelines)
+ml/artifacts/*.joblib
+ml/artifacts/*.json
+!ml/artifacts/.gitkeep
+
 # Logs
 logs/
 
