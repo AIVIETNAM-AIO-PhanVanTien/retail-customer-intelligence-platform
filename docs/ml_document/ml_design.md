@@ -115,6 +115,9 @@ These are the **raw** Recency, Frequency, and Monetary values — no quintile sc
 | `recency_days` | Days since last purchase to `OBSERVATION_END` | `OBSERVATION_END − MAX(invoice_date)` per customer | int |
 | `frequency` | Count of distinct valid invoices | `COUNT(DISTINCT invoice) WHERE is_cancellation = false` | int |
 | `monetary` | Total revenue from valid transactions | `SUM(line_amount) WHERE is_cancellation = false` | float |
+| `frequency_last_30d` | Invoices in last 30 days | Frequency limited to `OBSERVATION_END - 30 days` | int |
+| `frequency_last_90d` | Invoices in last 90 days | Frequency limited to `OBSERVATION_END - 90 days` | int |
+| `monetary_last_90d` | Revenue in last 90 days | Monetary limited to `OBSERVATION_END - 90 days` | float |
 
 > **Rationale for raw R/F/M only:** Quintile scores (`r_score`, `f_score`, `m_score`) and `rfm_segment` are excluded because they are discretized transformations of the raw values. Using raw continuous values preserves the full information and avoids information loss from binning. Tree-based models (Random Forest, XGBoost) can capture non-linear patterns from raw values directly.
 
@@ -127,6 +130,7 @@ These are the **raw** Recency, Frequency, and Monetary values — no quintile sc
 | `avg_unit_price` | Avg price per item | `SUM(price × quantity) / SUM(quantity)` (valid only) | float |
 | `total_quantity` | Total items purchased | `SUM(quantity) WHERE is_cancellation = false` | int |
 | `unique_products` | Distinct products purchased | `COUNT(DISTINCT stock_code)` | int |
+| `product_diversity_trend` | Trend of unique products over time | Unique products in last 90d / total unique products | float |
 
 #### 2.2.3 Temporal Features
 
@@ -137,6 +141,9 @@ These are the **raw** Recency, Frequency, and Monetary values — no quintile sc
 | `std_days_between_orders` | Regularity of purchases | Std dev of inter-purchase gaps | float |
 | `days_since_first_purchase` | Customer lifetime span | `OBSERVATION_END − MIN(invoice_date)` | int |
 | `is_one_time_buyer` | Single-purchase customer flag | `1 if frequency = 1 else 0` | binary |
+| `overdue_ratio` | Ratio of recency to avg order gap | `recency_days / avg_days_between_orders` | float |
+| `purchase_regularity` | Coefficient of variation of order gaps | `std_days_between_orders / avg_days_between_orders` | float |
+| `recency_one_time` | Recency applied to one-time buyers | `recency_days` if `is_one_time_buyer` else 0 | int |
 
 #### 2.2.4 Engagement Features
 
@@ -146,24 +153,36 @@ These are the **raw** Recency, Frequency, and Monetary values — no quintile sc
 | `return_quantity_rate` | Proportion of returned items | `ABS(SUM(quantity WHERE quantity < 0)) / SUM(quantity WHERE quantity > 0)` | float |
 | `weekend_purchase_ratio` | Weekend shopping tendency | `COUNT(invoice WHERE invoice_day_of_week IN (6,7)) / COUNT(invoice)` | float |
 
-#### 2.2.5 Monetary Pattern Features
+#### 2.2.5 Monetary Pattern & Velocity Features
 
 | Feature | Description | Source Computation | Type |
 |---------|-------------|-------------------|------|
 | `monetary_trend` | Spending direction over time | Linear regression slope of monthly revenue | float |
 | `max_single_order_value` | Largest single order | `MAX(SUM(line_amount) GROUP BY invoice)` | float |
 | `min_single_order_value` | Smallest single order | `MIN(SUM(line_amount) GROUP BY invoice)` | float |
+| `ratio_frequency_90d` | Buying velocity | `frequency_last_90d / frequency` | float |
+| `velocity_ratio_180d` | Velocity in 180d vs overall | `(frequency_last_180d / 180) / (frequency / tenure_days)` | float |
+| `spending_recency_ratio` | Recent spending vs total | `monetary_last_90d / monetary` | float |
+| `velocity_ratio_30d_90d` | Short vs medium term velocity | `frequency_last_30d / frequency_last_90d` | float |
+| `monetary_acceleration` | Change in spending rate | Compare recent AOV to historical AOV | float |
+
+#### 2.2.6 Categorical Features
+
+| Feature | Description | Source Computation | Type |
+|---------|-------------|-------------------|------|
+| `is_uk` | Is customer from United Kingdom | `1 if country == 'United Kingdom' else 0` | binary |
 
 ### 2.3 Feature Summary
 
 | Category | Count | Key Features |
 |----------|-------|-------------|
-| RFM Raw | 3 | recency_days, frequency, monetary |
-| Behavioral | 5 | AOV, basket size, product diversity |
-| Temporal | 5 | Tenure, order gaps, one-time buyer flag |
+| RFM Raw & Windowed | 6 | recency_days, frequency, monetary, freq_last_30d |
+| Behavioral | 6 | AOV, basket size, product diversity, diversity trend |
+| Temporal | 8 | Tenure, order gaps, one-time flag, overdue_ratio |
 | Engagement | 3 | Cancellation rate, return rate, weekend ratio |
-| Monetary Pattern | 3 | Spending trend, max/min order value |
-| **Total** | **~19** | |
+| Monetary Pattern & Velocity | 8 | Spending trend, velocity ratios, max/min order value |
+| Categorical | 1 | is_uk flag |
+| **Total** | **32** | |
 
 ### 2.4 Feature Engineering Pipeline
 
@@ -205,7 +224,7 @@ We follow a **three-model approach**: one baseline + two tree-based models for c
 | Aspect | Detail |
 |--------|--------|
 | **Library** | `sklearn.linear_model.LogisticRegression` |
-| **Preprocessing** | StandardScaler for all numerical features |
+| **Preprocessing** | Log1p transformation for highly skewed features → StandardScaler |
 | **Regularization** | L2 (Ridge) default; search over `C = [0.01, 0.1, 1, 10]` |
 | **Class weight** | `class_weight='balanced'` to handle imbalance |
 | **Strengths** | Fully interpretable coefficients, fast training, strong baseline |
@@ -226,7 +245,7 @@ We follow a **three-model approach**: one baseline + two tree-based models for c
 | Aspect | Detail |
 |--------|--------|
 | **Library** | `xgboost.XGBClassifier` |
-| **Key hyperparameters** | `max_depth: [3, 5, 7]`, `n_estimators: [100, 200, 300]`, `learning_rate: [0.01, 0.05, 0.1]`, `subsample: [0.7, 0.8, 1.0]`, `colsample_bytree: [0.7, 0.8, 1.0]` |
+| **Key hyperparameters** | `max_depth: [3, 5, 7]`, `n_estimators: [100, 200, 300]`, `learning_rate: [0.01, 0.05, 0.1]`, `gamma: [0, 0.1, 0.5]`, `min_child_weight: [1, 3, 5]` |
 | **Imbalance handling** | `scale_pos_weight = count(class_0) / count(class_1)` |
 | **Early stopping** | `early_stopping_rounds=20` on validation AUC |
 | **Strengths** | Handles non-linearity, feature interactions, missing values, built-in regularization |
@@ -272,7 +291,8 @@ customer_feature_matrix (from §2.4)
     ├── Train/Test Split (80/20, stratified)
     │
     ├── Preprocessing Pipeline (sklearn Pipeline)
-    │   └── Numerical: SimpleImputer(median) → StandardScaler
+    │   ├── Skewed Numerical: SimpleImputer(median) → FunctionTransformer(np.log1p) → StandardScaler
+    │   └── Regular Numerical: SimpleImputer(median) → StandardScaler
     │
     ├── Model 1: LogisticRegression (baseline)
     │   └── GridSearchCV (C, penalty)
