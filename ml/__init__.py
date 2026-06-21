@@ -1,10 +1,18 @@
-"""ML Churn Prediction package.
+"""ML package — customer intelligence models.
 
-Public API:
+Shared modules live here; task-specific code lives in subpackages.
+
+Shared:
     from ml.features import build_feature_matrix
-    from ml.train import train_all_models, select_best_model
-    from ml.evaluate import evaluate_all_models, find_optimal_threshold
-    from ml.score import batch_score, save_scores
+    from ml.config import FEATURE_COLUMNS
     from ml.artifacts import save_model_artifacts, load_model_artifacts
-    from ml.pipeline import run_train_pipeline, run_score_pipeline
+
+Churn (XGBoost):
+    from ml.churn.train import train_and_log
+    from ml.churn.evaluate import evaluate_model, find_optimal_threshold
+    from ml.churn.score import batch_score, save_scores
+    from ml.churn.pipeline import run_train_pipeline, run_score_pipeline
+
+Clustering (K-Means) — Sprint 4:
+    ml/clustering/  (to be added)
 """

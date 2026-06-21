@@ -3,10 +3,10 @@
 Usage::
 
     # Full training pipeline
-    python -m ml.pipeline --mode train
+    python -m ml.churn.pipeline --mode train
 
     # Scoring pipeline (uses saved model)
-    python -m ml.pipeline --mode score
+    python -m ml.churn.pipeline --mode score
 """
 
 from __future__ import annotations
@@ -27,14 +27,14 @@ from ml.config import (
     RANDOM_STATE,
     TEST_SIZE,
 )
-from ml.evaluate import (
+from ml.churn.evaluate import (
     evaluate_model,
     find_optimal_threshold,
     log_evaluation_to_mlflow,
 )
 from ml.features import build_feature_matrix
-from ml.score import batch_score, save_scores
-from ml.train import train_and_log
+from ml.churn.score import batch_score, save_scores
+from ml.churn.train import train_and_log
 
 logging.basicConfig(
     level=logging.INFO,

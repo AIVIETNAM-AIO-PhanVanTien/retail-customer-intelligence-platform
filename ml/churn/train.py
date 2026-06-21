@@ -23,7 +23,7 @@ from sklearn.pipeline import Pipeline
 from xgboost import XGBClassifier
 
 from ml.config import FEATURE_COLUMNS, RANDOM_STATE
-from ml.preprocessing import build_tree_preprocessor
+from ml.churn.preprocessing import build_tree_preprocessor
 
 logger = logging.getLogger(__name__)
 
