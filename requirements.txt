@@ -10,8 +10,9 @@ deltalake>=0.17.0           # Delta Lake read/write (local)
 duckdb>=0.10.0              # In-process SQL engine for dbt
 
 # ─── Transform ───
-dbt-core>=1.8.0
-dbt-duckdb>=1.8.0           # dbt adapter for DuckDB
+dbt-core==1.8.8
+dbt-duckdb==1.8.4           # dbt adapter for DuckDB (1.9+ pulls protobuf>=5, breaks mlflow 2.11)
+protobuf<5                  # pin: mlflow 2.11 needs protobuf<5; dbt 1.9 would force >=5
 
 # ─── Machine Learning ───
 scikit-learn>=1.4.0
