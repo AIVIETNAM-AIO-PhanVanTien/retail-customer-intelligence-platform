@@ -16,6 +16,14 @@ with DAG(
     start_date=datetime(2026, 1, 1),
     catchup=False,
     tags=["pipeline", "medallion"],
+    doc_md="""
+    ## Retail Pipeline DAG
+    Automates the full medallion pipeline:
+    - **ingest_bronze**: loads raw CSV into Bronze parquet files
+    - **clean_silver**: cleans and deduplicates into Silver layer
+    - **dbt_run**: builds Gold star schema + RFM mart via dbt
+    - **dbt_test**: runs 46 data quality tests across all models
+    """,
 ) as dag:
 
     ingest_bronze = BashOperator(
