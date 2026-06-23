@@ -66,10 +66,10 @@
 
 | Owner | Tasks | Output |
 | --- | --- | --- |
-| DATA | Feature mart (`AOV`, `LTV`, `tenure`, `order_gap`, `avg_basket_size`) · KPI marts (revenue by month, retention, cohort, segment distribution) · Power BI layout design | `mart_customer_features`, KPI marts |
+| DATA | KPI marts (revenue by month, retention, cohort, segment distribution) · Power BI layout design | KPI marts |
 | MODEL | Feature engineering (R, F, M, AOV, LTV, tenure, order patterns) · train LR + XGBoost (cross-validation) · evaluation (AUC, precision, recall, F1, confusion matrix, threshold) · batch scoring (`churn_probability` + `churn_flag`) | Trained models + metrics |
 | PIPELINE | Extend Airflow DAG (`train_model → score_customers → publish predictions`) · MLflow tracking server + experiment logging + model registry | Extended DAG + MLflow server |
-| QA | Model validation (feature schema, value ranges, AUC gate **> 0.80**) · data-quality tests on feature/KPI marts | Model test report |
+| QA | Model validation (feature schema, value ranges, AUC gate **> 0.80**) · data-quality tests on KPI marts | Model test report |
 | TECH LEAD | Review PRs for ML pipeline, feature engineering, MLflow integration | PR approvals |
 
 > **Sprint 3 Demo (Thu 25 Jun):** `Customer → Features → Churn Model → Churn Probability` (ML pipeline)
@@ -107,7 +107,7 @@
 | Airflow DAG (data pipeline) | Ngọc Phương (PIPELINE) | S2 |
 | RFM Scoring + Segmentation | Phúc Nhân Nguyễn (MODEL) | S2 |
 | Data Validation (layers + RFM) | Hoàng Đức Kiên (QA) | S2 |
-| Feature Mart + KPI Marts | Võ Ngọc Gia Bảo (DATA) | S3 |
+| KPI Marts | Võ Ngọc Gia Bảo (DATA) | S3 |
 | Churn Model (LR + XGBoost) | Phúc Nhân Nguyễn (MODEL) | S3 |
 | Batch Scoring Pipeline | Phúc Nhân Nguyễn (MODEL) | S3 |
 | MLflow Tracking + Registry | Ngọc Phương (PIPELINE) | S3 |

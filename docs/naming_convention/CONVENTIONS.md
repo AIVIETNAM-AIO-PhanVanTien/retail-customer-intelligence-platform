@@ -104,7 +104,7 @@ Append the **Jira key** in parentheses so commits trace back to the ticket.
 ### Good examples
 
 ```
-feat: add RFM quintile scoring to fct_rfm (ACM1-36)
+feat: add RFM quintile scoring to mart_rfm (ACM1-36)
 data: build dim_date with year/month/week grain (ACM1-31)
 ml: train xgboost churn model, log run to mlflow (ACM1-54)
 fix: handle cancelled invoices (C-prefix) in silver clean (ACM1-30)
@@ -173,8 +173,8 @@ Linting: **ruff** (enforced in CI). Run `ruff check .` before pushing.
 | Staging | `stg_` | 1:1 with source, light cleaning | `stg_online_retail.sql` |
 | Intermediate | `int_` | reusable building blocks | `int_orders_joined.sql` |
 | Marts — dimension | `dim_` | conformed dimensions | `dim_customer`, `dim_date` |
-| Marts — fact | `fct_` / `fact_` | measures / events | `fact_transactions`, `fct_rfm` |
-| Marts — aggregate | `mart_` | analytics / feature marts | `mart_customer_features` |
+| Marts — fact | `fct_` / `fact_` | measures / events | `fact_transactions` |
+| Marts — aggregate | `mart_` | analytics / customer marts | `mart_rfm`, `mart_churn_scores` |
 
 ### Column rules
 
