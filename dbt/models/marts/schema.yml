@@ -68,23 +68,27 @@ models:
         tests:
           - not_null
           - relationships:
-              to: ref('dim_customer')
-              field: customer_sk
+              arguments:
+                to: ref('dim_customer')
+                field: customer_sk
       - name: product_sk
         tests:
           - relationships:
-              to: ref('dim_product')
-              field: product_sk
+              arguments:
+                to: ref('dim_product')
+                field: product_sk
       - name: country_sk
         tests:
           - relationships:
-              to: ref('dim_country')
-              field: country_sk
+              arguments:
+                to: ref('dim_country')
+                field: country_sk
       - name: date_sk
         tests:
           - relationships:
-              to: ref('dim_date')
-              field: date_sk
+              arguments:
+                to: ref('dim_date')
+                field: date_sk
       - name: quantity
         tests:
           - not_null
@@ -118,30 +122,83 @@ models:
         tests:
           - not_null
           - accepted_values:
-              values: [1, 2, 3, 4, 5]
+              arguments:
+                values: [1, 2, 3, 4, 5]
       - name: f_score
         tests:
           - not_null
           - accepted_values:
-              values: [1, 2, 3, 4, 5]
+              arguments:
+                values: [1, 2, 3, 4, 5]
       - name: m_score
         tests:
           - not_null
           - accepted_values:
-              values: [1, 2, 3, 4, 5]
+              arguments:
+                values: [1, 2, 3, 4, 5]
       - name: segment
         tests:
           - not_null
           - accepted_values:
-              values:
-                - 'Champions'
-                - 'Loyal Customers'
-                - 'Potential Loyalists'
-                - 'New Customers'
-                - 'Promising'
-                - 'Cannot Lose Them'
-                - 'At Risk'
-                - 'About to Sleep'
-                - 'Hibernating'
-                - 'Lost'
-                - 'Need Attention'
+              arguments:
+                values:
+                  - 'Champions'
+                  - 'Loyal Customers'
+                  - 'Potential Loyalists'
+                  - 'New Customers'
+                  - 'Promising'
+                  - 'Cannot Lose Them'
+                  - 'At Risk'
+                  - 'About to Sleep'
+                  - 'Hibernating'
+                  - 'Lost'
+                  - 'Need Attention'
+
+  - name: mart_kpi_monthly
+    description: "Monthly KPI mart: revenue, units, orders, active customers, AOV and cancellation metrics at year_month grain. Single source of truth = int_transactions__prepared."
+    columns:
+      - name: year_month
+        description: "Partition key (YYYY-MM)"
+        tests:
+          - not_null
+          - unique
+      - name: revenue
+        description: "Gross revenue from valid purchases (SUM line_amount)"
+        tests:
+          - not_null
+      - name: units_sold
+        tests:
+          - not_null
+      - name: orders
+        tests:
+          - not_null
+      - name: active_customers
+        tests:
+          - not_null
+      - name: aov
+        description: "Average order value = revenue / orders"
+        tests:
+          - not_null
+
+  - name: mart_features
+    description: "Customer-level feature snapshot for churn/ML, computed in dbt SQL (DuckDB). Column names aligned with ml/config.py FEATURE_COLUMNS. As-of latest invoice_date (score mode)."
+    columns:
+      - name: customer_id
+        tests:
+          - not_null
+          - unique
+      - name: recency_days
+        tests:
+          - not_null
+      - name: frequency
+        tests:
+          - not_null
+      - name: monetary
+        tests:
+          - not_null
+      - name: avg_order_value
+        tests:
+          - not_null
+      - name: is_uk
+        tests:
+          - not_null

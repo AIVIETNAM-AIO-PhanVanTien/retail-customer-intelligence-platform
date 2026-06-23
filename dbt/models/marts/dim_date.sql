@@ -11,7 +11,9 @@ SELECT
     YEAR(dt)                          AS year,
     MONTH(dt)                         AS month,
     WEEK(dt)                          AS week,
-    DAYOFWEEK(dt)                     AS day_of_week,
+    -- 0 = Monday (DuckDB dayofweek is 0=Sunday; shift to match silver's
+    -- invoice_day_of_week = pandas .weekday(), 0=Mon..6=Sun).
+    (dayofweek(dt) + 6) % 7           AS day_of_week,
     QUARTER(dt)                       AS quarter
 FROM dates
 ORDER BY dt

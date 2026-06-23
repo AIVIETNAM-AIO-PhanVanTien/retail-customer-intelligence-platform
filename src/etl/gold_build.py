@@ -1,8 +1,29 @@
-"""Gold layer: star schema + RFM mart (ACM1-31, ACM1-36).
+"""Gold layer: star schema + RFM mart — REFERENCE / supplementary implementation.
 
 Loads all Silver partitions, builds a Kimball star schema
 (dim_customer, dim_product, dim_date, dim_country, fact_transactions)
-and an RFM mart with quintile scoring and segment labels.
+and an RFM mart with quintile scoring and segment labels, writing Parquet
+under data/gold/.
+
+Role of this module
+-------------------
+This is a **reference implementation**, kept for medallion-pattern demonstration
+and manual cross-layer QA (consumed by ``src/utils/layer_validation.py``). It is
+**NOT** part of the automated pipeline — it is not wired into the Airflow DAG.
+
+The **canonical Gold serving path is dbt** (``dbt/models/marts/*``, materialized
+in ``data/retail.duckdb``; in the DAG + covered by the dbt test suite). dbt and
+this module intentionally share the same business definitions (RFM SEGMENT_MAP,
+cleaning rules, dim_date day-of-week convention) so their results reconcile.
+
+Scope
+-----
+Covers the original star schema + ``mart_rfm`` only. The newer
+``mart_kpi_monthly`` and ``mart_features`` exist **only in dbt** — they have no
+Python consumer (KPIs serve BI via DuckDB -> Power BI; the churn pipeline
+computes features in-process from Silver via ``ml/features.py``), so they are
+deliberately NOT replicated here. If a Python/Parquet consumer for them is ever
+added, replicate them here at that point.
 
 Usage::
 

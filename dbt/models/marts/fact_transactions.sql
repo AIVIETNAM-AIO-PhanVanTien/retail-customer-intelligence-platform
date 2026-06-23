@@ -19,7 +19,8 @@ WITH txns AS (
 ),
 with_sk AS (
     SELECT
-        ROW_NUMBER() OVER ()      AS transaction_sk,
+        -- Deterministic surrogate key: stable across rebuilds (mirrors gold_build.py).
+        ROW_NUMBER() OVER (ORDER BY tx.tx_date, tx.invoice, tx.stock_code, tx.customer_id) AS transaction_sk,
         COALESCE(c.customer_sk, 0) AS customer_sk,
         p.product_sk,
         cy.country_sk,

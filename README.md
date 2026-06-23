@@ -133,6 +133,8 @@ Then open:
 
 > The **primary dashboard is Power BI** (`powerbi/*.pbix`, opened in Power BI Desktop, connected to the serving marts). Streamlit is the lightweight in-stack demo.
 
+> **Canonical Gold path = dbt.** The serving marts are materialized by dbt into `data/retail.duckdb` (in the Airflow DAG, covered by the dbt test suite, and what Power BI connects to — e.g. via the DuckDB ODBC driver). `src/etl/gold_build.py` is a **reference/Parquet implementation** kept for medallion demonstration + manual QA only; it is **not** in the DAG and covers just the original star schema + RFM. `mart_kpi_monthly` and `mart_features` are dbt-only (no Python consumer).
+
 > **Dataset:** "Online Retail List for RFM" (real, ~1.01M rows). Provided as `online_retail_listing.csv` — place under `data/raw/` (semicolon-delimited, comma decimals, `dd.mm.yyyy` dates). Timestamps are **date-rebased to the present** so recency and churn windows stay meaningful. The file is **not committed** (see `.gitignore`).
 
 ---
