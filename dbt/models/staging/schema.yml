@@ -23,12 +23,14 @@ models:
       - name: is_cancellation
         tests:
           - not_null
+          - accepted_values:
+              values: [true, false]
+              quote: false
       - name: invoice_date
         tests:
           - not_null
       - name: country
         description: "Customer's country"
-        
         tests:
           - not_null
       - name: year_month

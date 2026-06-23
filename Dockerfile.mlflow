@@ -1,5 +1,5 @@
 FROM python:3.10-slim
 
-RUN pip install --no-cache-dir mlflow==2.11.0
+RUN pip install --no-cache-dir mlflow==3.13.0
 
 EXPOSE 5000

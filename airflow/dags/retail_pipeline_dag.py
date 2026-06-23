@@ -28,7 +28,7 @@ with DAG(
 
     ingest_bronze = BashOperator(
         task_id="ingest_bronze",
-        bash_command="cd /opt/airflow && python3 src/etl/bronze_ingest.py --all",
+        bash_command="cd /opt/airflow && python3 -m src.etl.bronze_ingest --all",
     )
 
     clean_silver = BashOperator(
@@ -44,6 +44,18 @@ with DAG(
     dbt_test = BashOperator(
         task_id="dbt_test",
         bash_command="cd /opt/airflow/dbt && dbt test",
+        trigger_rule="all_success",
     )
 
-    ingest_bronze >> clean_silver >> dbt_run >> dbt_test
+    train_model = BashOperator(
+        task_id="train_model",
+        bash_command="cd /opt/airflow && python3 -m ml.churn.pipeline --mode train",
+    )
+
+    score_customers = BashOperator(
+        task_id="score_customers",
+        bash_command="cd /opt/airflow && python3 -m ml.churn.pipeline --mode score",
+    )
+
+    ingest_bronze >> clean_silver >> dbt_run >> dbt_test >> train_model >> score_customers
+    

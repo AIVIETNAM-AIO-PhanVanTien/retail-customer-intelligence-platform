@@ -334,7 +334,7 @@ At the end of Sprint 2 QA must deliver at minimum:
 - list of resolved and open issues;
 - validation logs for Bronze / Silver / Gold / RFM;
 - summary of remaining technical risks;
-- notes for areas to watch when expanding to feature marts and ML.
+- notes for areas to watch when expanding to KPI marts and ML.
 
 ---
 

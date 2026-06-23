@@ -86,7 +86,7 @@ Raw load   →    Clean · dedup  →    Star schema    →    KPI marts    → 
 │   ├── models/
 │   │   ├── staging/
 │   │   ├── intermediate/
-│   │   └── marts/           # dim_*, fact_transactions, fct_rfm, mart_customer_features
+│   │   └── marts/           # dim_*, fact_transactions, mart_rfm (+ mart_churn_scores from ml/)
 │   └── schema.yml           # data-quality tests (unique, not_null, accepted_values, relationships)
 ├── ml/                      # feature engineering, churn model (LR + XGBoost), SHAP, K-Means
 ├── dashboard/               # Streamlit demo app (segments · KPIs · churn-risk · retention export)

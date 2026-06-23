@@ -109,6 +109,9 @@ models:
         tests:
           - not_null
           - unique
+          - relationships:
+              to: ref('dim_customer')
+              field: customer_id
       - name: recency_days
         tests:
           - not_null
