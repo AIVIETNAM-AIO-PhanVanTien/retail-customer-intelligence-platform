@@ -11,11 +11,19 @@ default_args = {
 with DAG(
     dag_id="retail_pipeline",
     default_args=default_args,
-    description="Ingest -> Clean -> dbt -> ML train/score -> publish",
+    description="Ingest -> Clean -> dbt run -> dbt test",
     schedule="@daily",
     start_date=datetime(2026, 1, 1),
     catchup=False,
     tags=["pipeline", "medallion"],
+    doc_md="""
+    ## Retail Pipeline DAG
+    Automates the full medallion pipeline:
+    - **ingest_bronze**: loads raw CSV into Bronze parquet files
+    - **clean_silver**: cleans and deduplicates into Silver layer
+    - **dbt_run**: builds Gold star schema + RFM mart via dbt
+    - **dbt_test**: runs the dbt data-quality test suite across all models
+    """,
 ) as dag:
 
     ingest_bronze = BashOperator(

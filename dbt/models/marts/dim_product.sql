@@ -4,11 +4,7 @@
 SELECT
     ROW_NUMBER() OVER (ORDER BY stock_code) AS product_sk,
     stock_code,
-    description
-FROM (
-    SELECT DISTINCT
-        stock_code,
-        FIRST(description) OVER (PARTITION BY stock_code ORDER BY description) AS description
-    FROM {{ ref('int_transactions__prepared') }}
-) t
+    MIN(description) AS description
+FROM {{ ref('int_transactions__prepared') }}
+GROUP BY stock_code
 ORDER BY product_sk
