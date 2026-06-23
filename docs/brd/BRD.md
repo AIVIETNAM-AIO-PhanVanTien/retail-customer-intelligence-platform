@@ -214,7 +214,7 @@ The platform follows a **Medallion (Bronze → Silver → Gold)** data architect
 | **Bronze** | Immutable raw ingest; snake_case, typed, partitioned by `year_month`; flag cancellations | Parquet partitions |
 | **Silver** | Clean, dedup, compute `line_amount`, **date-rebase** to present, quality gate | Validated Parquet + quality report |
 | **Gold** | Kimball star schema + RFM mart with quintile scores and segment labels | `fact_transactions`, `dim_*`, `mart_rfm` |
-| **Analytics / ML** | Feature mart → churn model → batch scores | `churn_probability`, `churn_flag` |
+| **Analytics / ML** | Feature engineering (in-pipeline, from Silver) → churn model → batch scores | `mart_churn_scores` (`churn_probability`, `churn_flag`, `risk_tier`) |
 | **Serving** | Segments, KPIs, churn-risk, cohort views, retention-list export | Dashboard + exported list |
 
 ### 10.2 Cross-Cutting Concerns
@@ -320,7 +320,7 @@ Airflow runs ingest → transform → quality gate → score, with the failure b
 | Role | Member | Ownership |
 |---|---|---|
 | **Tech Lead** | Phan Văn Tiến | BRD · UML · architecture · sprint planning · MLflow · business impact |
-| **AI Eng · Data (Team Leader)** | Võ Ngọc Gia Bảo | Star schema · dbt models · feature mart · KPI marts · dashboard |
+| **AI Eng · Data (Team Leader)** | Võ Ngọc Gia Bảo | Star schema · dbt models · KPI marts · dashboard |
 | **AI Eng · Model** | Phúc Nhân Nguyễn | RFM logic · feature engineering · churn model · explainability |
 | **AI Eng · Pipeline** | Ngọc Phương | Repo · Docker Compose · Airflow DAGs · CI/CD |
 | **QA · Reviewer** | Hoàng Đức Kiên | Definition of Done · test plan · data/model/UAT validation · final review |
