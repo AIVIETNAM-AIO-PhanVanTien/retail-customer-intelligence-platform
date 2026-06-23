@@ -1,7 +1,6 @@
 version: 2
 models:
   - name: stg_silver__transactions
-    description: "Cleaned transactions from Silver layer parquet files, deduplicated and filtered for noise"
     description: "1:1 mirror of validated Silver Parquet (Python silver_transform output)"
     columns:
       - name: invoice
@@ -24,12 +23,14 @@ models:
       - name: is_cancellation
         tests:
           - not_null
+          - accepted_values:
+              values: [true, false]
+              quote: false
       - name: invoice_date
         tests:
           - not_null
       - name: country
         description: "Customer's country"
-        
         tests:
           - not_null
       - name: year_month
