@@ -1,0 +1,61 @@
+{
+  "model_name": "churn-xgboost",
+  "model_type": "XGBClassifier (sklearn Pipeline)",
+  "optimal_threshold": 0.5,
+  "risk_tiers": {
+    "High": 0.7,
+    "Medium": 0.4,
+    "Low": 0.0
+  },
+  "feature_columns": [
+    "recency_days",
+    "frequency",
+    "monetary",
+    "frequency_last_30d",
+    "frequency_last_90d",
+    "monetary_last_90d",
+    "avg_order_value",
+    "avg_basket_size",
+    "avg_unit_price",
+    "total_quantity",
+    "unique_products",
+    "tenure_days",
+    "avg_days_between_orders",
+    "std_days_between_orders",
+    "days_since_first_purchase",
+    "is_one_time_buyer",
+    "cancellation_rate",
+    "return_quantity_rate",
+    "weekend_purchase_ratio",
+    "monetary_trend",
+    "max_single_order_value",
+    "min_single_order_value",
+    "ratio_frequency_90d",
+    "velocity_ratio_180d",
+    "spending_recency_ratio",
+    "velocity_ratio_30d_90d",
+    "overdue_ratio",
+    "purchase_regularity",
+    "recency_one_time",
+    "product_diversity_trend",
+    "monetary_acceleration",
+    "is_uk"
+  ],
+  "n_features": 32,
+  "n_customers": 5860,
+  "metrics": {
+    "auc_roc": 0.0
+  },
+  "score_summary": {
+    "min": 0.05533503368496895,
+    "p25": 0.27365633845329285,
+    "median": 0.5150743126869202,
+    "p75": 0.7309746146202087,
+    "max": 0.8992288112640381,
+    "mean": 0.49831005930900574,
+    "pct_high_risk": 0.2907849829351536,
+    "pct_churn_flag": 0.5189419795221843
+  },
+  "source_run_id": "fc297b71",
+  "exported_at": "2026-06-24T00:47:08.599230+00:00"
+}

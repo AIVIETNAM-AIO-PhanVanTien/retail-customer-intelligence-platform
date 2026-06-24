@@ -1,0 +1,309 @@
+"""Churn Serving — Streamlit ML demo (HuggingFace Spaces).
+
+Self-contained churn-prediction service. Loads the trained XGBoost
+sklearn Pipeline and serves three modes:
+
+  1. Score a customer  — pick a customer, see churn probability + drivers
+  2. Retention list    — filter the base, export a targeting CSV
+  3. What-if           — adjust key features, score a synthetic customer
+
+This app only needs the files shipped in this folder:
+  model/model.pkl · model/metadata.json · data/customers.parquet
+The rest of the repo (dbt / airflow / ml package) is NOT required at runtime.
+"""
+
+from __future__ import annotations
+
+import json
+import pickle
+from pathlib import Path
+
+import numpy as np
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
+
+HERE = Path(__file__).resolve().parent
+MODEL_PATH = HERE / "model" / "model.pkl"
+META_PATH = HERE / "model" / "metadata.json"
+DATA_PATH = HERE / "data" / "customers.parquet"
+
+st.set_page_config(
+    page_title="Churn Serving · Retail Intelligence",
+    page_icon="🛒",
+    layout="wide",
+)
+
+
+# ── Loaders (cached) ─────────────────────────────────────────────────────────
+@st.cache_resource(show_spinner="Loading model…")
+def load_model():
+    with open(MODEL_PATH, "rb") as fh:
+        return pickle.load(fh)
+
+
+@st.cache_data(show_spinner=False)
+def load_metadata() -> dict:
+    with open(META_PATH, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+@st.cache_data(show_spinner="Loading customers…")
+def load_customers() -> pd.DataFrame:
+    return pd.read_parquet(DATA_PATH)
+
+
+model = load_model()
+meta = load_metadata()
+customers = load_customers()
+FEATURES: list[str] = meta["feature_columns"]
+
+
+def risk_tier(p: float) -> str:
+    tiers = meta["risk_tiers"]
+    if p >= tiers["High"]:
+        return "High"
+    if p >= tiers["Medium"]:
+        return "Medium"
+    return "Low"
+
+
+TIER_COLOR = {"High": "#d62728", "Medium": "#ff7f0e", "Low": "#2ca02c"}
+
+
+def feature_importance() -> pd.DataFrame:
+    """Global gain importance from the XGBoost step, mapped to feature names."""
+    xgb = model.named_steps["model"]
+    imp = np.asarray(xgb.feature_importances_, dtype=float)
+    return (
+        pd.DataFrame({"feature": FEATURES, "importance": imp})
+        .sort_values("importance", ascending=False)
+        .reset_index(drop=True)
+    )
+
+
+def score_frame(df: pd.DataFrame) -> np.ndarray:
+    return model.predict_proba(df[FEATURES])[:, 1]
+
+
+# ── Sidebar ──────────────────────────────────────────────────────────────────
+with st.sidebar:
+    st.markdown("## 🛒 Churn Serving")
+    st.caption("Retail Customer Intelligence Platform")
+    st.divider()
+
+    threshold = st.slider(
+        "Decision threshold",
+        min_value=0.05,
+        max_value=0.95,
+        value=float(meta.get("optimal_threshold", 0.5)),
+        step=0.01,
+        help="Probability ≥ threshold ⇒ flagged as churn.",
+    )
+
+    ss = meta.get("score_summary", {})
+    st.divider()
+    st.markdown("**Model**")
+    st.write(f"Type: `{meta.get('model_type', 'XGBoost')}`")
+    st.write(f"Features: **{meta.get('n_features', len(FEATURES))}**")
+    st.write(f"Customers: **{meta.get('n_customers', len(customers)):,}**")
+    if ss:
+        st.write(f"Mean churn prob: **{ss.get('mean', 0):.2f}**")
+    st.caption(f"Run `{meta.get('source_run_id', 'n/a')[:8]}`")
+
+
+st.title("Customer Churn — Model Serving")
+st.caption(
+    "Live XGBoost scoring for retention targeting. "
+    "BI/KPI reporting lives in Power BI; this Space serves the ML model."
+)
+
+tab_one, tab_list, tab_whatif = st.tabs(
+    ["🔎 Score a customer", "📋 Retention list", "🧪 What-if"]
+)
+
+
+# ── Tab 1: single customer ───────────────────────────────────────────────────
+with tab_one:
+    col_pick, _ = st.columns([2, 3])
+    with col_pick:
+        cid = st.selectbox(
+            "Customer ID",
+            options=customers["customer_id"].tolist(),
+            index=0,
+        )
+    row = customers.loc[customers["customer_id"] == cid].iloc[0]
+    prob = float(score_frame(row.to_frame().T)[0])
+    tier = risk_tier(prob)
+    flagged = prob >= threshold
+
+    g1, g2, g3, g4 = st.columns(4)
+    g1.metric("Churn probability", f"{prob:.1%}")
+    g2.metric("Risk tier", tier)
+    g3.metric("Decision", "⚠️ CHURN" if flagged else "✅ Retain")
+    g4.metric("RFM segment", str(row.get("segment", "—")))
+
+    gauge = go.Figure(
+        go.Indicator(
+            mode="gauge+number",
+            value=prob * 100,
+            number={"suffix": "%"},
+            gauge={
+                "axis": {"range": [0, 100]},
+                "bar": {"color": TIER_COLOR[tier]},
+                "threshold": {
+                    "line": {"color": "black", "width": 3},
+                    "value": threshold * 100,
+                },
+                "steps": [
+                    {"range": [0, 40], "color": "#e7f4e7"},
+                    {"range": [40, 70], "color": "#fdeed9"},
+                    {"range": [70, 100], "color": "#f8e0e0"},
+                ],
+            },
+        )
+    )
+    gauge.update_layout(height=260, margin=dict(t=20, b=10, l=20, r=20))
+
+    c_left, c_right = st.columns([1, 1])
+    with c_left:
+        st.plotly_chart(gauge, width="stretch")
+    with c_right:
+        st.markdown("**Customer snapshot**")
+        snap = {
+            "Recency (days)": row.get("recency_days"),
+            "Frequency": row.get("frequency"),
+            "Monetary": row.get("monetary"),
+            "Avg order value": row.get("avg_order_value"),
+            "Tenure (days)": row.get("tenure_days"),
+            "One-time buyer": bool(row.get("is_one_time_buyer", 0)),
+        }
+        st.table(
+            pd.DataFrame(
+                {"value": [snap[k] for k in snap]}, index=list(snap)
+            ).round(2)
+        )
+
+    # Top drivers (global gain) + this customer's percentile on each
+    st.markdown("**Top churn drivers** (model gain importance)")
+    top = feature_importance().head(8).copy()
+    pct = {
+        f: float((customers[f] <= row[f]).mean()) for f in top["feature"]
+    }
+    top["customer_percentile"] = top["feature"].map(pct)
+    bar = go.Figure(
+        go.Bar(
+            x=top["importance"][::-1],
+            y=top["feature"][::-1],
+            orientation="h",
+            marker_color="#1f77b4",
+        )
+    )
+    bar.update_layout(height=300, margin=dict(t=10, b=10, l=10, r=10))
+    st.plotly_chart(bar, width="stretch")
+    st.caption(
+        "Percentile = where this customer sits vs the base on each driver "
+        "(1.0 = highest)."
+    )
+    st.dataframe(
+        top.assign(
+            importance=top["importance"].round(4),
+            customer_percentile=top["customer_percentile"].round(2),
+        ),
+        hide_index=True,
+        width="stretch",
+    )
+
+
+# ── Tab 2: retention list ────────────────────────────────────────────────────
+with tab_list:
+    scored = customers.copy()
+    scored["churn_probability"] = (
+        score_frame(scored)
+        if "churn_probability" not in scored
+        else scored["churn_probability"]
+    )
+    scored["churn_flag"] = (scored["churn_probability"] >= threshold).astype(int)
+    scored["risk_tier"] = scored["churn_probability"].map(risk_tier)
+
+    f1, f2, f3 = st.columns(3)
+    tiers_sel = f1.multiselect(
+        "Risk tiers", ["High", "Medium", "Low"], default=["High"]
+    )
+    segs = sorted(scored["segment"].dropna().unique().tolist())
+    seg_sel = f2.multiselect("RFM segments", segs, default=[])
+    min_mon = f3.number_input("Min monetary (£)", value=0.0, step=100.0)
+
+    view = scored[scored["risk_tier"].isin(tiers_sel)]
+    if seg_sel:
+        view = view[view["segment"].isin(seg_sel)]
+    view = view[view["monetary"] >= min_mon]
+    view = view.sort_values("churn_probability", ascending=False)
+
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Customers targeted", f"{len(view):,}")
+    m2.metric("Revenue at stake (£)", f"{view['monetary'].sum():,.0f}")
+    m3.metric(
+        "Share of base",
+        f"{(len(view) / max(len(scored), 1)):.1%}",
+    )
+
+    cols = [
+        "customer_id",
+        "segment",
+        "churn_probability",
+        "risk_tier",
+        "recency_days",
+        "frequency",
+        "monetary",
+    ]
+    st.dataframe(
+        view[cols].assign(
+            churn_probability=view["churn_probability"].round(3),
+            monetary=view["monetary"].round(0),
+        ),
+        hide_index=True,
+        width="stretch",
+        height=420,
+    )
+    st.download_button(
+        "⬇️ Download retention list (CSV)",
+        data=view[cols].to_csv(index=False).encode("utf-8"),
+        file_name="retention_list.csv",
+        mime="text/csv",
+    )
+
+
+# ── Tab 3: what-if ───────────────────────────────────────────────────────────
+with tab_whatif:
+    st.caption(
+        "Start from the median customer and adjust the key levers. "
+        "Untouched features use the population median."
+    )
+    base = customers[FEATURES].median(numeric_only=True)
+    levers = [
+        "recency_days",
+        "frequency",
+        "monetary",
+        "frequency_last_90d",
+        "avg_order_value",
+        "tenure_days",
+    ]
+    levers = [f for f in levers if f in FEATURES]
+
+    cols = st.columns(3)
+    synth = base.copy()
+    for i, f in enumerate(levers):
+        lo = float(customers[f].quantile(0.01))
+        hi = float(customers[f].quantile(0.99))
+        synth[f] = cols[i % 3].slider(
+            f, min_value=lo, max_value=hi, value=float(base[f])
+        )
+
+    synth_df = synth.to_frame().T[FEATURES]
+    p = float(score_frame(synth_df)[0])
+    t = risk_tier(p)
+    a, b, c = st.columns(3)
+    a.metric("Churn probability", f"{p:.1%}")
+    b.metric("Risk tier", t)
+    c.metric("Decision", "⚠️ CHURN" if p >= threshold else "✅ Retain")
