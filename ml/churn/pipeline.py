@@ -35,6 +35,7 @@ from ml.churn.evaluate import (
 from ml.features import build_feature_matrix
 from ml.churn.score import batch_score, save_scores
 from ml.churn.train import train_and_log
+from scripts.export_serving_app import export_serving_bundle
 
 logging.basicConfig(
     level=logging.INFO,
@@ -69,7 +70,7 @@ def run_train_pipeline() -> None:
     mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
     mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
 
-    with mlflow.start_run(run_name="xgboost-train"):
+    with mlflow.start_run(run_name="xgboost-train") as run:
         mlflow.log_param("n_samples", len(X))
         mlflow.log_param("churn_rate", f"{y.mean():.4f}")
         mlflow.log_param("test_size", TEST_SIZE)
@@ -110,6 +111,15 @@ def run_train_pipeline() -> None:
         features_all = build_feature_matrix(mode="score")
         scoring_df = batch_score(pipeline, features_all, optimal_threshold)
         save_scores(scoring_df)
+
+        # Refresh the serving bundle (app/) so the Streamlit/HF Space
+        # always ships the model from the latest run.
+        export_serving_bundle(
+            model=pipeline,
+            threshold=optimal_threshold,
+            metrics=test_metrics,
+            run_id=run.info.run_id,
+        )
 
     logger.info("=" * 60)
     logger.info(
