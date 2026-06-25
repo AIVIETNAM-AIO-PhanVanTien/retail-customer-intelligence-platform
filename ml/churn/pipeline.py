@@ -32,6 +32,11 @@ from ml.churn.evaluate import (
     find_optimal_threshold,
     log_evaluation_to_mlflow,
 )
+from ml.churn.explain import (
+    compute_shap_values,
+    log_shap_to_mlflow,
+    save_shap_artifacts,
+)
 from ml.features import build_feature_matrix
 from ml.churn.score import batch_score, save_scores
 from ml.churn.train import train_and_log
@@ -51,14 +56,14 @@ def run_train_pipeline() -> None:
     logger.info("=" * 60)
 
     # 1. Feature engineering (train mode)
-    logger.info("[1/5] Building feature matrix (train mode)...")
+    logger.info("[1/6] Building feature matrix (train mode)...")
     model_df = build_feature_matrix(mode="train")
     X = model_df[FEATURE_COLUMNS].copy()
     y = model_df["churn"].astype(int)
     logger.info("Feature matrix: %d rows × %d features", len(X), X.shape[1])
 
     # 2. Train/test split
-    logger.info("[2/5] Train/test split (%.0f%% test)...", TEST_SIZE * 100)
+    logger.info("[2/6] Train/test split (%.0f%% test)...", TEST_SIZE * 100)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y,
         test_size=TEST_SIZE,
@@ -75,11 +80,11 @@ def run_train_pipeline() -> None:
         mlflow.log_param("churn_rate", f"{y.mean():.4f}")
         mlflow.log_param("test_size", TEST_SIZE)
 
-        logger.info("[3/5] Training XGBoost...")
+        logger.info("[3/6] Training XGBoost...")
         pipeline, best_params, cv_auc = train_and_log(X_train, y_train)
 
         # 4. Evaluate on test set
-        logger.info("[4/5] Evaluating on test set...")
+        logger.info("[4/6] Evaluating on test set...")
         test_metrics = evaluate_model(pipeline, X_test, y_test)
         optimal_threshold, threshold_metrics = find_optimal_threshold(
             pipeline, X_test, y_test
@@ -98,8 +103,14 @@ def run_train_pipeline() -> None:
             "XGBoost", test_metrics, optimal_threshold, threshold_metrics
         )
 
-        # 5. Save artifacts locally
-        logger.info("[5/5] Saving model artifacts...")
+        # 5. SHAP explainability (on test set)
+        logger.info("[5/6] Computing SHAP values on test set...")
+        shap_data = compute_shap_values(pipeline, X_test, FEATURE_COLUMNS)
+        save_shap_artifacts(shap_data)
+        log_shap_to_mlflow(shap_data, X_test, FEATURE_COLUMNS)
+
+        # 6. Save artifacts locally
+        logger.info("[6/6] Saving model artifacts...")
         save_model_artifacts(
             model=pipeline,
             threshold=optimal_threshold,

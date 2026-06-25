@@ -16,8 +16,8 @@ protobuf<5                  # pin: mlflow 2.11 needs protobuf<5; dbt 1.9 would f
 
 # ─── Machine Learning ───
 scikit-learn>=1.4.0
-xgboost>=2.0.0
-shap>=0.45.0                # Feature explainability
+xgboost>=2.0.0,<3.0.0
+shap>=0.45.0,<0.50            # Feature explainability (numpy<2 compat)
 joblib>=1.3.0
 
 # ─── ML Tracking ───

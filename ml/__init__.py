@@ -12,7 +12,10 @@ Churn (XGBoost):
     from ml.churn.evaluate import evaluate_model, find_optimal_threshold
     from ml.churn.score import batch_score, save_scores
     from ml.churn.pipeline import run_train_pipeline, run_score_pipeline
+    from ml.churn.explain import compute_shap_values, global_shap_importance
 
-Clustering (K-Means) — Sprint 4:
-    ml/clustering/  (to be added)
+Clustering (K-Means):
+    from ml.clustering.pipeline import run_clustering_pipeline
+    from ml.clustering.train import train_kmeans, find_optimal_k
+    from ml.clustering.profile import build_cluster_profiles
 """
