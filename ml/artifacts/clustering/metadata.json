@@ -1,0 +1,50 @@
+{
+  "model_type": "KMeans",
+  "k": 4,
+  "feature_columns": [
+    "recency_days",
+    "frequency",
+    "monetary",
+    "frequency_last_30d",
+    "frequency_last_90d",
+    "monetary_last_90d",
+    "avg_order_value",
+    "avg_basket_size",
+    "avg_unit_price",
+    "total_quantity",
+    "unique_products",
+    "tenure_days",
+    "avg_days_between_orders",
+    "std_days_between_orders",
+    "days_since_first_purchase",
+    "is_one_time_buyer",
+    "cancellation_rate",
+    "return_quantity_rate",
+    "weekend_purchase_ratio",
+    "monetary_trend",
+    "max_single_order_value",
+    "min_single_order_value",
+    "ratio_frequency_90d",
+    "velocity_ratio_180d",
+    "spending_recency_ratio",
+    "velocity_ratio_30d_90d",
+    "overdue_ratio",
+    "purchase_regularity",
+    "recency_one_time",
+    "product_diversity_trend",
+    "monetary_acceleration",
+    "is_uk"
+  ],
+  "cluster_labels": {
+    "0": "High-Value Active",
+    "1": "Dormant",
+    "2": "Average Regulars",
+    "3": "New / One-Time Buyers"
+  },
+  "metrics": {
+    "silhouette_score": 0.24300500909168055,
+    "calinski_harabasz": 1554.3907670806595,
+    "davies_bouldin": 1.4732940126060723
+  },
+  "saved_at": "2026-06-25T06:38:14.160948+00:00"
+}

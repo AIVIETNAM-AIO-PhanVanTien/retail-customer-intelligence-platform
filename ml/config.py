@@ -24,6 +24,11 @@ QA_AUC_GATE = 0.80
 MLFLOW_TRACKING_URI = "http://127.0.0.1:5001"
 MLFLOW_EXPERIMENT_NAME = "churn-prediction"
 
+# Clustering
+CLUSTERING_K_RANGE = range(3, 9)
+CLUSTERING_ARTIFACT_DIR = ARTIFACT_DIR / "clustering"
+MLFLOW_CLUSTERING_EXPERIMENT = "customer-clustering"
+
 # Feature columns (31 features)
 FEATURE_COLUMNS: list[str] = [
     # RFM Core
