@@ -159,7 +159,7 @@ SELECT
     CASE WHEN b.frequency = 1 THEN 1 ELSE 0 END                                                  AS is_one_time_buyer,
     -- engagement
     COALESCE(b.cancellation_invoice_count * 1.0 / NULLIF(b.invoice_count, 0), 0)                 AS cancellation_rate,
-    COALESCE(b.qty_returned * 1.0 / NULLIF(b.qty_positive, 0), 0)                                AS return_quantity_rate,
+    LEAST(COALESCE(b.qty_returned * 1.0 / NULLIF(b.qty_positive, 0), 0), 1.0)                  AS return_quantity_rate,
     COALESCE(w.weekend_purchase_ratio, 0)                                                        AS weekend_purchase_ratio,
     COALESCE(sl.monetary_trend, 0)                                                               AS monetary_trend,
     iv.max_single_order_value,

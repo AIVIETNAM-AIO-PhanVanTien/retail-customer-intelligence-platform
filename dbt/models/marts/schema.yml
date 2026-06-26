@@ -171,7 +171,19 @@ models:
         tests:
           - not_null
       - name: aov
-        description: "Average order value = revenue / orders"
+        description: "Average order value = revenue / orders; null when orders = 0"
+      - name: cancelled_orders
+        tests:
+          - not_null
+      - name: cancellation_value
+        tests:
+          - not_null
+      - name: net_revenue
+        tests:
+          - not_null
+      - name: cancellation_order_rate
+        description: "cancelled_orders / (orders + cancelled_orders); null when denominator is 0"
+      - name: line_count
         tests:
           - not_null
 
@@ -182,6 +194,9 @@ models:
         tests:
           - not_null
           - unique
+          - relationships:
+              to: ref('dim_customer')
+              field: customer_id
       - name: recency_days
         tests:
           - not_null
@@ -191,7 +206,88 @@ models:
       - name: monetary
         tests:
           - not_null
+      - name: frequency_last_30d
+        tests:
+          - not_null
+      - name: frequency_last_90d
+        tests:
+          - not_null
+      - name: monetary_last_90d
+        tests:
+          - not_null
       - name: avg_order_value
+        tests:
+          - not_null
+      - name: avg_basket_size
+        tests:
+          - not_null
+      - name: avg_unit_price
+        tests:
+          - not_null
+      - name: total_quantity
+        tests:
+          - not_null
+      - name: unique_products
+        tests:
+          - not_null
+      - name: tenure_days
+        tests:
+          - not_null
+      - name: avg_days_between_orders
+        tests:
+          - not_null
+      - name: std_days_between_orders
+        tests:
+          - not_null
+      - name: days_since_first_purchase
+        tests:
+          - not_null
+      - name: is_one_time_buyer
+        tests:
+          - not_null
+      - name: cancellation_rate
+        tests:
+          - not_null
+      - name: return_quantity_rate
+        tests:
+          - not_null
+      - name: weekend_purchase_ratio
+        tests:
+          - not_null
+      - name: monetary_trend
+        tests:
+          - not_null
+      - name: max_single_order_value
+        tests:
+          - not_null
+      - name: min_single_order_value
+        tests:
+          - not_null
+      - name: ratio_frequency_90d
+        tests:
+          - not_null
+      - name: velocity_ratio_180d
+        tests:
+          - not_null
+      - name: spending_recency_ratio
+        tests:
+          - not_null
+      - name: velocity_ratio_30d_90d
+        tests:
+          - not_null
+      - name: overdue_ratio
+        tests:
+          - not_null
+      - name: purchase_regularity
+        tests:
+          - not_null
+      - name: recency_one_time
+        tests:
+          - not_null
+      - name: product_diversity_trend
+        tests:
+          - not_null
+      - name: monetary_acceleration
         tests:
           - not_null
       - name: is_uk
