@@ -23,14 +23,14 @@ x-airflow-common: &airflow-common
     - ./ml:/opt/airflow/ml
     - ./src:/opt/airflow/src
     - ./requirements.txt:/opt/airflow/requirements.txt
-
+    - ./scripts:/opt/airflow/scripts
   depends_on:
     postgres:
       condition: service_healthy
 
 services:
 
-  # ─── Postgres (Airflow metadata DB) ───
+  # ─── Postgres (Airflow metadata DB) ───────────────────────────────────────
   postgres:
     image: postgres:15
     environment:
@@ -44,7 +44,7 @@ services:
       interval: 5s
       retries: 5
 
-  # ─── Airflow init (runs once: creates DB + admin user) ───
+  # ─── Airflow init (runs once: creates DB + admin user) ────────────────────
   airflow-init:
     <<: *airflow-common
     command: >
@@ -57,7 +57,7 @@ services:
       --email admin@example.com
       --password admin"
 
-  # ─── Airflow webserver (UI) ───
+  # ─── Airflow webserver (UI) ───────────────────────────────────────────────
   airflow-webserver:
     <<: *airflow-common
     command: webserver
@@ -71,7 +71,7 @@ services:
       timeout: 10s
       retries: 5
 
-  # ─── Airflow scheduler (runs the DAGs) ───
+  # ─── Airflow scheduler (runs the DAGs) ───────────────────────────────────
   airflow-scheduler:
     <<: *airflow-common
     command: scheduler
@@ -79,7 +79,9 @@ services:
       airflow-init:
         condition: service_completed_successfully
 
-  # ─── MLflow tracking server ───
+  # ─── MLflow tracking server ───────────────────────────────────────────────
+  # Note: using SQLite backend — sufficient for a single-node setup.
+  # Upgrade to postgres backend if you need concurrent writers or horizontal scale.
   mlflow:
     build:
       context: .
@@ -97,20 +99,28 @@ services:
       --serve-artifacts
       --artifacts-destination /mlflow/mlruns
 
-  # ─── Streamlit dashboard ───
-# ─── Streamlit dashboard (not built yet — uncomment when dashboard/app.py exists) ───
-  # streamlit:
-  #   build:
-  #     context: .
-  #     dockerfile: Dockerfile.streamlit
-  #   env_file: .env
-  #   ports:
-  #     - "8501:8501"
-  #   volumes:
-  #     - ./data:/app/data
-  #     - ./dashboard:/app/dashboard
-  #   depends_on:
-  #     - mlflow
+  # ─── Streamlit dashboard (ACM1-75) ────────────────────────────────────────
+  # Production-ready: restart policy, ml/ + app/ volumes mounted.
+  # Requires Dockerfile.streamlit at repo root.
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    env_file: .env
+    ports:
+      - "8501:8501"
+    volumes:
+      # Gold data — churn scores, RFM mart, fact tables
+      - ./data:/app/data:ro
+      # ML artifacts — model.pkl, metadata.json, SHAP outputs (ACM1-76 drift tab)
+      - ./ml:/app/ml:ro
+      # Serving layer — customers.parquet + model copy exported by publish_scores
+      - ./app:/app/app:ro
+      # Dashboard source — pages/, components/, monitoring tab (ACM1-76)
+      - ./dashboard:/app/dashboard
+    depends_on:
+      - mlflow
+    restart: unless-stopped
 
 volumes:
   postgres_data:
