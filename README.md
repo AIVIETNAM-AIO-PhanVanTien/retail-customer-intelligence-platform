@@ -3,37 +3,36 @@
 > **Mini Enterprise Data Platform — SDLC-complete.** A business-driven, full-lifecycle data platform that turns raw e-commerce transactions into customer segments, churn predictions, and an exportable retention list — delivered the way a real enterprise project flows: **BRD → UML → Star Schema → Airflow → dbt → Testing → CI/CD**.
 
 <p align="left">
-  <img alt="Airflow"  src="https://img.shields.io/badge/Airflow-orchestration-017CEE">
-  <img alt="dbt"      src="https://img.shields.io/badge/dbt-transform-FF694B">
-  <img alt="DuckDB"   src="https://img.shields.io/badge/DuckDB-engine-FFF000">
-  <img alt="MLflow"   src="https://img.shields.io/badge/MLflow-tracking-0194E2">
-  <img alt="Power BI" src="https://img.shields.io/badge/Power%20BI-dashboard-F2C811">
-  <img alt="Streamlit" src="https://img.shields.io/badge/Streamlit-demo-FF4B4B">
-  <img alt="Docker"   src="https://img.shields.io/badge/Docker-compose-2496ED">
-  <img alt="CI"       src="https://img.shields.io/badge/GitHub%20Actions-CI%2FCD-2088FF">
+  <img alt="Airflow"   src="https://img.shields.io/badge/Airflow-orchestration-017CEE">
+  <img alt="dbt"       src="https://img.shields.io/badge/dbt-transform-FF694B">
+  <img alt="DuckDB"    src="https://img.shields.io/badge/DuckDB-engine-FFF000">
+  <img alt="MLflow"    src="https://img.shields.io/badge/MLflow-tracking-0194E2">
+  <img alt="Power BI"  src="https://img.shields.io/badge/Power%20BI-dashboard-F2C811">
+  <img alt="Streamlit" src="https://img.shields.io/badge/Streamlit-HF%20Spaces-FF4B4B">
+  <img alt="Docker"    src="https://img.shields.io/badge/Docker-compose-2496ED">
+  <img alt="CI"        src="https://img.shields.io/badge/GitHub%20Actions-CI%2FCD-2088FF">
 </p>
 
 `AIO Conquer 2026 · Module 01 · Project #22 + #20`
 
 ---
 
-## 1. The Business Problem (BRD)
+## 1. Business Problem
 
 Marketing sends **mass campaigns** to the entire customer base — low relevance, wasted spend. Retention is low and **high-value customers churn unnoticed**, with no systematic way to know who is about to leave.
 
 **Objectives (measurable):**
 
 | Goal | Target | Metric |
-| --- | --- | --- |
+|---|---|---|
 | Reduce churn | −10% | Churn rate (rolling 90-day) |
 | Grow retention revenue | +5% | Revenue from returning customers |
 | Campaign efficiency | Targeted, not mass | % campaigns sent to defined segments |
 
 **Scope:** historical transactions → RFM segments → churn predictions → retention-list export + dashboard.
 **Out of scope:** live campaign execution, email sending, real CRM integration (simulated).
-**Success:** dashboard delivers segment + churn view; retention list exportable; model AUC and data quality monitored.
 
-> **Guiding principle — SDLC over model.** What makes a reviewer call this "enterprise" is the chain `BRD → UML → Star Schema → Airflow → dbt → Testing → CI/CD`, **not** the churn model (~15–20% of total value). We deliberately use **no Kafka / Spark / Kubernetes / microservices** — maturity is shown through SDLC completeness, not framework count.
+> **Guiding principle — SDLC over model.** What makes a reviewer call this "enterprise" is the chain `BRD → UML → Star Schema → Airflow → dbt → Testing → CI/CD`, **not** the churn model (~15–20% of total value). Deliberately **no Kafka / Spark / Kubernetes / microservices** — maturity is shown through SDLC completeness, not framework count.
 
 ---
 
@@ -42,9 +41,10 @@ Marketing sends **mass campaigns** to the entire customer base — low relevance
 ### Medallion data flow
 
 ```
-BRONZE          SILVER              GOLD                ANALYTICS         ML
-Raw load   →    Clean · dedup  →    Star schema    →    KPI marts    →    Churn · K-Means
-(immutable)     date-shift          + RFM               dashboard         predictions
+BRONZE          SILVER              GOLD                  ANALYTICS       ML
+Raw load   →    Clean · dedup  →    Star schema      →    KPI marts  →    Churn · K-Means
+(immutable)     date-shift          + RFM + features       Power BI        predictions
+                                    + KPIs                               monitoring
 ```
 
 ### Dimensional model (Kimball star schema)
@@ -52,27 +52,30 @@ Raw load   →    Clean · dedup  →    Star schema    →    KPI marts    → 
 ```
                   ┌────────────────────┐
    dim_customer ──┤  fact_transactions │── dim_product
-   dim_date     ──┤  (measures: qty,   │── dim_country
-                  │   unit_price,      │
-                  │   line_amount)     │
+   dim_date     ──┤  (qty · unit_price │── dim_country
+                  │   · line_amount)   │
                   └────────────────────┘
+                         │
+            ┌────────────┼─────────────┐
+         mart_rfm   mart_features  mart_kpi_monthly
+         mart_churn_scores         mart_customer_clusters
 ```
-
-`fact_transactions` holds the measures; the **RFM** and **churn** aggregates are derived Gold marts built on top.
 
 ---
 
 ## 3. Tech Stack
 
 | Layer | Tool | Responsibility |
-| --- | --- | --- |
-| Orchestration | **Apache Airflow** | ingest → dbt run → dbt test → train → score → publish |
-| Storage | **Delta Lake / Parquet** | ACID + immutable Bronze + time travel |
-| Transform | **dbt + DuckDB** | staging → intermediate → marts (star schema + RFM) |
-| ML & tracking | **XGBoost + MLflow** | training, experiments, registry, batch scoring |
-| Serving | **Power BI** (primary) + **Streamlit** (demo app) | segments, KPIs, churn-risk, cohort, retention export |
-| Containerization | **Docker Compose** | one-command reproducible stack |
-| CI/CD | **GitHub Actions** | lint → dbt test → pytest → docker build |
+|---|---|---|
+| Orchestration | **Apache Airflow 2.9** | ingest → clean → dbt run/test → train → score → publish → monitor |
+| Storage | **Parquet + DuckDB** | Medallion lake (Bronze/Silver/Gold) + serving marts |
+| Transform | **dbt-duckdb 1.8** | staging → intermediate → marts (star schema + RFM + KPIs + features) |
+| ML tracking | **MLflow 2.11** | experiment tracking, model registry, artifact storage |
+| ML models | **XGBoost + scikit-learn** | churn pipeline; **K-Means** for behavioural clustering |
+| Explainability | **SHAP** | global + local feature importance |
+| Serving | **Power BI** (primary BI) + **Streamlit** (ML demo on HF Spaces) | segments · KPIs · churn-risk · retention export |
+| Containerization | **Docker Compose** | one-command reproducible local stack |
+| CI/CD | **GitHub Actions** | lint (ruff) → pytest → dbt compile → docker build |
 
 ---
 
@@ -80,166 +83,312 @@ Raw load   →    Clean · dedup  →    Star schema    →    KPI marts    → 
 
 ```
 .
-├── airflow/                 # DAGs: ingest → clean → dbt → train → score → publish
+├── .github/
+│   └── workflows/
+│       └── ci.yml              # CI: lint → pytest → dbt compile → docker build
+│
+├── airflow/
 │   └── dags/
-├── dbt/                     # staging → intermediate → marts (star schema + RFM)
+│       └── retail_pipeline_dag.py  # full end-to-end + monitoring DAG
+│
+├── app/                        # ── HuggingFace Spaces (self-contained) ──
+│   ├── app.py                  # Streamlit: 6 tabs (Overview · Score · Retention · What-if · Clustering · Monitoring)
+│   ├── Dockerfile              # Docker SDK, port 7860
+│   ├── requirements.txt        # runtime deps only
+│   ├── model/
+│   │   ├── model.pkl           # sklearn Pipeline (imputer + XGBoost)
+│   │   └── metadata.json       # threshold · feature list · score summary
+│   └── data/
+│       ├── customers.parquet   # 5,860 scored customers (churn prob + cluster)
+│       ├── cluster_profiles.parquet  # 4-cluster K-Means profiles
+│       └── monitoring.parquet  # model + data drift metrics
+│
+├── dashboard/
+│   └── app.py                  # local Pipeline Ops dashboard (docker-compose streamlit service)
+│
+├── dbt/
 │   ├── models/
-│   │   ├── staging/
-│   │   ├── intermediate/
-│   │   └── marts/           # dim_*, fact_transactions, mart_rfm (+ mart_churn_scores from ml/)
-│   └── schema.yml           # data-quality tests (unique, not_null, accepted_values, relationships)
-├── ml/                      # feature engineering, churn model (LR + XGBoost), SHAP, K-Means
-├── dashboard/               # Streamlit demo app (segments · KPIs · churn-risk · retention export)
-├── powerbi/                 # Power BI report (.pbix) + data model — primary dashboard
-├── data/                    # local volume (Bronze/Silver/Gold) — gitignored
-├── notebooks/               # eda.ipynb, profiling
-├── tests/                   # pytest by Medallion layer
-│   ├── conftest.py          # shared fixtures (bronze_like_df, silver_like_df)
-│   ├── bronze/              # bronze ingest
-│   ├── silver/              # silver transform + data quality utility
-│   ├── gold/                # star schema + RFM
-│   └── cross_layer/         # Bronze→Silver→Gold QA + integration
-├── docs/                    # planning/ · naming_convention/ · jira/ · BRD.md ·
-│                            # Solution_Architecture.md · ml_design.md · test_plan.md · business_impact.md
-├── report/                  # LaTeX technical report (AIConquer2026_Kit, 4 sections)
-├── .github/workflows/ci.yml # CI pipeline
-├── docker-compose.yml       # Airflow + dbt/DuckDB + Postgres + MLflow + Streamlit
-└── README.md
+│   │   ├── staging/            # stg_transactions · stg_calendar
+│   │   ├── intermediate/       # int_transactions_cleaned
+│   │   └── marts/              # dim_* · fact_transactions · mart_rfm
+│   │                           # mart_features · mart_kpi_monthly · mart_churn_scores
+│   ├── tests/                  # 25 custom SQL assertion tests
+│   ├── dbt_project.yml
+│   └── profiles.yml            # dev (relative path) + prod (Airflow absolute path)
+│
+├── ml/
+│   ├── churn/                  # pipeline · train · evaluate · score · explain (SHAP) · uat
+│   ├── clustering/             # pipeline · train · preprocessing · profile · evaluate
+│   ├── monitoring/             # drift detection · monitoring store · pipeline
+│   ├── artifacts/              # saved model artifacts (model.joblib · metadata.json · SHAP)
+│   ├── config.py               # shared constants (paths · feature columns · thresholds)
+│   ├── features.py             # feature matrix builder (reads from DuckDB mart_features)
+│   ├── artifacts.py            # save/load helpers for model artifacts
+│   └── validation.py           # model quality gate (AUC threshold check)
+│
+├── src/
+│   ├── etl/
+│   │   ├── bronze_ingest.py    # raw CSV → partitioned Parquet (immutable, date-rebased)
+│   │   ├── silver_transform.py # clean · dedup · type-cast · validate → Silver
+│   │   └── gold_build.py       # star schema + RFM → Parquet (reference impl; dbt is canonical)
+│   └── utils/
+│       ├── data_quality_check.py  # per-column quality checks (null rate, range, format)
+│       └── layer_validation.py    # cross-layer reconciliation (row counts, revenue totals)
+│
+├── scripts/
+│   ├── export_serving_app.py   # bundle model + customers + clusters + monitoring → app/
+│   ├── export_powerbi.py       # export Gold marts → data/powerbi/ (Parquet for PBI Desktop)
+│   └── dbt_test.sh             # convenience wrapper: dbt run + dbt test
+│
+├── tests/
+│   ├── conftest.py             # shared fixtures (bronze_like_df, silver_like_df)
+│   ├── bronze/                 # ingest · partitioning · audit log
+│   ├── silver/                 # transform · data quality utils
+│   ├── gold/                   # star schema build · RFM mart
+│   ├── cross_layer/            # Bronze→Silver→Gold reconciliation (integration)
+│   └── ml/                     # model validation · churn UAT · AUC gate
+│
+├── notebooks/
+│   ├── 01_eda_bronze.ipynb     # raw data profiling
+│   ├── 02_eda_silver.ipynb     # cleaned data analysis
+│   ├── 03_eda_gold.ipynb       # star schema + RFM exploration
+│   ├── 04_sql_exploration.ipynb # DuckDB SQL queries on Gold layer
+│   └── 05_churn_modeling.ipynb # model training walkthrough
+│
+├── docs/
+│   ├── brd/                    # BRD.md · BRD.pdf
+│   ├── architect/              # solution_architect.png · data_flow.png
+│   ├── data_modeling/          # pipeline_design.md · source_to_target_mapping.md
+│   ├── ml_document/            # ml_design.md
+│   ├── planning/               # Project_Plan.md
+│   ├── test/                   # test_plan.md · definition_of_done.md
+│   ├── naming_convention/      # CONVENTIONS.md
+│   ├── jira/                   # Jira_Plan_ACM1.pdf
+│   └── meeting_minutes/        # sprint_1.md · sprint_2.md · sprint_3.md
+│
+├── data/                       # local lake (gitignored except .gitkeep)
+│   ├── raw/                    # online_retail_listing.csv (place here — not committed)
+│   ├── bronze/                 # partitioned Parquet (year_month=YYYY-MM/)
+│   ├── silver/                 # cleaned Parquet + quality_report.json per partition
+│   ├── gold/                   # mart outputs (mart_churn_scores · mart_monitoring · clustering/)
+│   └── retail.duckdb           # DuckDB serving database (dbt target)
+│
+├── Makefile                    # make setup · make pipeline · make train · make serve …
+├── CONTRIBUTING.md             # role assignments · branch conventions · PR process
+├── pyproject.toml              # ruff config + pytest markers
+├── docker-compose.yml          # Airflow + MLflow + Streamlit (ops dashboard)
+├── Dockerfile.airflow
+├── Dockerfile.mlflow
+├── Dockerfile.streamlit        # runs dashboard/app.py on port 8501
+├── requirements.txt            # full dev dependencies
+└── .env.example                # environment variable template
 ```
 
 ---
 
 ## 5. Quickstart
 
+### Option A — Make (recommended for local dev)
+
 ```bash
-# 1. Clone
-git clone <your-repo-url>.git
+git clone https://github.com/AIVIETNAM-AIO-PhanVanTien/retail-customer-intelligence-platform.git
 cd retail-customer-intelligence-platform
 
-# 2. Configure
-cp .env.example .env          # set credentials / paths
+cp .env.example .env       # configure paths / credentials
 
-# 3. Run the whole stack — one command
-docker-compose up
+make setup                 # install all dependencies
+make pipeline              # bronze → silver → gold → dbt run/test
+make train                 # train XGBoost churn model
+make cluster               # run K-Means clustering
+make export-app            # bundle model + data → app/
+make serve                 # Streamlit demo on http://localhost:8501
 ```
 
-Then open:
+Run `make help` to see all available commands.
+
+### Option B — Docker Compose (full stack)
+
+```bash
+cp .env.example .env
+docker compose up --build -d
+```
 
 | Service | URL |
-| --- | --- |
-| Streamlit demo app | http://localhost:8501 |
+|---|---|
 | Airflow UI | http://localhost:8080 |
-| MLflow UI | http://localhost:5001 |
+| MLflow UI | http://localhost:5000 |
+| Streamlit Ops | http://localhost:8501 |
 
-> The **primary dashboard is Power BI** (`powerbi/*.pbix`, opened in Power BI Desktop, connected to the serving marts). Streamlit is the lightweight in-stack demo.
+> **Dataset:** place `online_retail_listing.csv` under `data/raw/` (semicolon-delimited, ~1.01M rows). Not committed — see `.gitignore`.
 
-> **Canonical Gold path = dbt.** The serving marts are materialized by dbt into `data/retail.duckdb` (in the Airflow DAG, covered by the dbt test suite, and what Power BI connects to — e.g. via the DuckDB ODBC driver). `src/etl/gold_build.py` is a **reference/Parquet implementation** kept for medallion demonstration + manual QA only; it is **not** in the DAG and covers just the original star schema + RFM. `mart_kpi_monthly` and `mart_features` are dbt-only (no Python consumer).
+> **Primary BI dashboard is Power BI** — open `data/powerbi/*.pbix` in Power BI Desktop after running `make pipeline` + `python scripts/export_powerbi.py`.
 
-> **Dataset:** "Online Retail List for RFM" (real, ~1.01M rows). Provided as `online_retail_listing.csv` — place under `data/raw/` (semicolon-delimited, comma decimals, `dd.mm.yyyy` dates). Timestamps are **date-rebased to the present** so recency and churn windows stay meaningful. The file is **not committed** (see `.gitignore`).
+> **Public ML demo** → [HuggingFace Spaces — retail-customer-intelligence](https://huggingface.co/spaces/tieensbeos/retail-customer-intelligence) (copy `app/` folder contents to a Docker Space).
 
 ---
 
 ## 6. End-to-End Pipeline
 
 ```
-Raw CSV → Airflow → dbt Star Schema → RFM → ML Churn → Dashboard → Retention List + Business Impact
+Raw CSV → Bronze (immutable) → Silver (clean) → Gold (star schema + RFM)
+        → dbt marts (features · KPIs · churn scores)
+        → ML (XGBoost churn · K-Means clusters · SHAP explanations)
+        → Serving (Power BI · Streamlit · retention CSV export)
+        → Monitoring (model drift · data drift → mart_monitoring)
 ```
 
-1. **Ingest** transactions (Bronze, immutable)
-2. **Clean & validate** → quality gate → quarantine + alert on failure
-3. **Compute RFM** (Recency, Frequency, Monetary) → quintile scores → segment labels
-4. **Predict churn** (batch score)
-5. **Publish** to dashboard
-6. **Export** retention list for Marketing
+### Key Gold marts
 
-### RFM Gold mart (selected columns)
-
-| Column | Type | Meaning |
-| --- | --- | --- |
-| `customer_id` | VARCHAR | Business key from source |
-| `recency_days` | INT | Days since last purchase |
-| `frequency` | INT | Distinct order count |
-| `monetary` | FLOAT | Total spend (GBP) |
-| `r_score` / `f_score` / `m_score` | INT (1–5) | Quintile scores |
-| `segment` | VARCHAR | Champions, Loyal, At Risk, Lost, … |
-| `churn_probability` | FLOAT | Model output 0–1 |
-| `churn_flag` | BOOLEAN | Threshold-applied prediction |
+| Mart | Rows | Description |
+|---|---|---|
+| `fact_transactions` | ~980K | Line-level sales after cleaning |
+| `dim_customer` | 5,860 | Identified customers only |
+| `mart_rfm` | 5,860 | RFM quintiles + 10 segment labels |
+| `mart_features` | 5,860 | 32 engineered features for ML |
+| `mart_kpi_monthly` | 25 | Monthly revenue, retention, cohort metrics |
+| `mart_churn_scores` | 5,860 | `churn_probability` + `churn_flag` |
+| `mart_customer_clusters` | 5,860 | K-Means `cluster_id` + `cluster_name` |
 
 ---
 
-## 7. Testing Strategy
+## 7. ML Layer
 
-Three layers, automated in CI:
+### Churn model
 
-- **Data quality (dbt):** `unique` · `not_null` · `accepted_values` (segment labels) · `relationships` (FK integrity) · freshness checks.
-- **Pipeline unit tests (pytest):** transform functions · Airflow DAG integrity (no cycles, valid deps) · date-shift correctness.
-- **ML tests:** feature validation (ranges, schema) · data-drift detection (train vs serve) · minimum-performance gate (AUC threshold).
-- **Acceptance:** RFM totals reconcile with raw revenue · segment counts sum to customer base · dashboard numbers match Gold tables.
+- **Algorithm:** XGBoost (sklearn Pipeline: SimpleImputer → XGBoostClassifier)
+- **Features:** 32 engineered from RFM + behavioural + trend signals
+- **Threshold:** 0.5 default (adjustable in Streamlit sidebar)
+- **Risk tiers:** High ≥ 0.7 · Medium ≥ 0.4 · Low < 0.4
+- **Tracking:** MLflow experiment `churn-prediction`, model registry
+
+### K-Means clustering (4 clusters)
+
+| Cluster | Size | Recency | Frequency | Monetary |
+|---|---|---|---|---|
+| High-Value Active | 2,005 (34%) | 28 days | 12.6 orders | £6,514 |
+| Average Regulars | 1,834 (31%) | 294 days | 4.6 orders | £1,634 |
+| Dormant | 1,257 (22%) | 438 days | 1.0 orders | £335 |
+| New / One-Time Buyers | 764 (13%) | 33 days | 2.0 orders | £673 |
+
+### SHAP — top churn drivers
+
+Global feature importance tracked in `ml/artifacts/shap/` and visualised in Streamlit tab **Score a customer**.
 
 ---
 
-## 8. CI/CD (GitHub Actions)
+## 8. Streamlit Demo (HuggingFace Spaces)
+
+6-tab interactive ML serving app — **no dbt / Airflow / MLflow needed at runtime**:
+
+| Tab | What it does |
+|---|---|
+| 📊 Overview | Churn KPIs · score distribution · RFM segment table |
+| 🔎 Score a customer | Churn probability · risk tier · SHAP drivers · customer snapshot |
+| 📋 Retention list | Filter by risk tier / RFM segment / monetary · export CSV |
+| 🧪 What-if | Adjust feature levers on a synthetic customer and re-score live |
+| 🔵 Clustering | 4 cluster profiles · distribution · churn rate per cluster · customer list |
+| 📈 Monitoring | Score distribution · risk tier breakdown · data drift status |
+
+**Deploy:** copy contents of `app/` to a HuggingFace Docker Space root → push → done.
+
+---
+
+## 9. Testing Strategy
+
+| Layer | Tool | What's tested |
+|---|---|---|
+| **Data quality** | dbt tests (25 SQL assertions) | unique · not_null · accepted_values · FK integrity · value ranges |
+| **Pipeline unit** | pytest (`tests/bronze/` · `tests/silver/` · `tests/gold/`) | transform logic · date-shift · quality check utils |
+| **Cross-layer** | pytest `tests/cross_layer/` (integration) | Bronze→Silver→Gold row reconciliation |
+| **ML** | pytest `tests/ml/` | feature schema · value ranges · AUC gate · UAT scoring rules |
+
+Run all unit tests: `make test` · Run all including integration: `make test-all`
+
+---
+
+## 10. CI/CD (GitHub Actions)
+
+`.github/workflows/ci.yml` — triggers on every push and PR to `main`:
 
 ```
-push / pull_request
-  → lint        (ruff / sqlfluff)
-  → dbt test    (data quality on sample)
-  → pytest      (unit + DAG integrity)
-  → build image (docker build)
-  → publish artifact
+lint (ruff)
+  ├── pytest          (unit tests, skip @integration)
+  │     └── docker-build   (build app/Dockerfile — HF Spaces image)
+  └── dbt-compile     (dbt parse — validates SQL + YAML without data)
 ```
 
 ---
 
-## 9. Monitoring & Observability
+## 11. Monitoring & Observability
 
-- **Data:** row count per run · null % per key column · ingestion freshness · schema-change alerts.
-- **Model:** prediction distribution drift · AUC degradation over time · feature drift vs training baseline · scoring volume.
+Each Airflow pipeline run logs metrics to `data/gold/mart_monitoring/mart_monitoring.parquet`:
 
-Lightweight implementation: metrics logged to a monitoring table each run + a small Streamlit "Ops" tab (Evidently optional for drift reports).
+| Category | Metrics |
+|---|---|
+| `model_drift` | score_mean · score_std · score_p25/p50/p75/p90 · n_high/medium/low_risk · pct_high_risk · score_distribution_z |
+| `data_drift` | n_features_checked · n_features_drifted · drift_rate (z-score based, threshold \|z\| > 3) |
 
----
-
-## 10. Business Impact (illustrative — real numbers produced at build time)
-
-- **Champions** generate ~48% of total revenue from a small share of customers.
-- **At Risk** customers account for ~22% of revenue — the priority retention target.
-- The **top 5% churn-risk** customers represent ~18% of revenue at stake.
-
-| Segment | Action | Expected outcome |
-| --- | --- | --- |
-| At Risk + high Monetary | Priority retention offer | Protect high-value revenue |
-| Top churn-risk 5% | Personalised win-back campaign | Directly reduce churn rate |
-| Champions | Loyalty / referral program | Maximise lifetime value |
-| New customers | Onboarding nurture | Convert to repeat buyers |
+Visible in the **📈 Monitoring** tab of the Streamlit app and the local ops dashboard (`dashboard/app.py`).
 
 ---
 
-## 11. Roadmap
+## 12. Document Map
 
-| Phase | Scope | Priority |
-| --- | --- | --- |
-| **P0 · Discovery** | BRD + Use Case / Activity / Sequence + ERD + data dictionary | MUST |
-| **P1 · MVP** | Ingest + date-shift → Medallion star schema → RFM Gold → Streamlit dashboard → Docker | MUST |
-| **P2 · ML + Quality** | Churn model + MLflow + batch scoring + dbt/pytest tests + GitHub Actions | SHOULD |
-| **P3 · Ops + Impact** | K-Means · monitoring (data + model drift) · business impact report · streaming replay | NICE |
-
-See [docs/planning/Project_Plan.md](docs/planning/Project_Plan.md) for the 4-week sprint plan and [docs/naming_convention/CONVENTIONS.md](docs/naming_convention/CONVENTIONS.md) for naming & Git workflow. Jira board: [`ACM1`](https://vongocgiabao79.atlassian.net/jira/software/projects/ACM1).
+| Document | Location | Description |
+|---|---|---|
+| Business Requirements (BRD) | [docs/brd/BRD.md](docs/brd/BRD.md) | Pain points · objectives · stakeholders · scope · FR/NFR |
+| Solution Architecture | [docs/architect/](docs/architect/) | Architecture diagram · data flow |
+| Pipeline Design | [docs/data_modeling/pipeline_design.md](docs/data_modeling/pipeline_design.md) | Medallion layer design · dbt model map |
+| Source-to-Target Mapping | [docs/data_modeling/source_to_target_mapping.md](docs/data_modeling/source_to_target_mapping.md) | Column-level lineage |
+| ML Design | [docs/ml_document/ml_design.md](docs/ml_document/ml_design.md) | Churn label logic · feature plan · model selection |
+| Project Plan | [docs/planning/Project_Plan.md](docs/planning/Project_Plan.md) | Sprint timeline · ownership matrix · milestones |
+| Test Plan | [docs/test/test_plan.md](docs/test/test_plan.md) | Test strategy · acceptance criteria |
+| Definition of Done | [docs/test/definition_of_done.md](docs/test/definition_of_done.md) | DoD per sprint |
+| Naming Conventions | [docs/naming_convention/CONVENTIONS.md](docs/naming_convention/CONVENTIONS.md) | Branch · file · variable naming rules |
+| Meeting Minutes S1 | [docs/meeting_minutes/sprint_1.md](docs/meeting_minutes/sprint_1.md) | Kickoff · architecture decisions · role assignments |
+| Meeting Minutes S2 | [docs/meeting_minutes/sprint_2.md](docs/meeting_minutes/sprint_2.md) | Data pipeline decisions · issues resolved |
+| Meeting Minutes S3 | [docs/meeting_minutes/sprint_3.md](docs/meeting_minutes/sprint_3.md) | ML decisions · threshold · feature store |
+| Contributing Guide | [CONTRIBUTING.md](CONTRIBUTING.md) | Role ownership · branch conventions · PR process · local setup |
 
 ---
 
-## 12. Team
+## 13. Delivery Status
 
-| Role | Member | Ownership |
-| --- | --- | --- |
-| **Team Leader · AI Eng (Data)** | Võ Ngọc Gia Bảo | Sprint planning · demos · EDA · Star Schema · feature/KPI marts · Power BI · demo video |
-| **Tech Lead** | Phan Văn Tiến | BRD · UML · architecture · MLflow · business impact · PR reviews · slides |
-| **AI Eng · Model** | Phúc Nhân Nguyễn | RFM scoring · feature engineering · churn model · SHAP · K-Means |
-| **AI Eng · Pipeline** | Ngọc Phương | Repo · Docker · Airflow DAGs · dbt models · MLflow server · CI/CD · monitoring |
-| **QA · Reviewer** | Hoàng Đức Kiên | DoD · test plan · data/model/UAT validation · final QA report |
+| Component | Owner | Status |
+|---|---|---|
+| BRD + UML + Architecture | Tech Lead | ✅ Done |
+| Bronze / Silver / Gold ETL | Data | ✅ Done |
+| dbt models + 25 data tests | Pipeline | ✅ Done |
+| Airflow DAG (full pipeline) | Pipeline | ✅ Done |
+| RFM scoring + 10 segments | Model | ✅ Done |
+| Churn model (XGBoost) + SHAP | Model | ✅ Done |
+| K-Means clustering (4 clusters) | Model | ✅ Done |
+| MLflow tracking + registry | Pipeline | ✅ Done |
+| Monitoring (data + model drift) | Pipeline | ✅ Done |
+| Streamlit demo (HF Spaces, 6 tabs) | Pipeline | ✅ Done |
+| GitHub Actions CI/CD | Pipeline | ✅ Done |
+| Docker Compose full stack | Pipeline | ✅ Done |
+| pytest suite (unit + ML + integration) | QA | ✅ Done |
+| Power BI dashboard | Data | 🔄 In progress |
+| Business Impact Report | Tech Lead | 🔄 In progress |
+| LaTeX Technical Report | All | 🔄 In progress |
+
+---
+
+## 14. Team
+
+| Member | Role | GitHub | Primary Scope |
+|---|---|---|---|
+| Võ Ngọc Gia Bảo | Team Leader · Data | — | Sprint planning · EDA · Star Schema · dbt models · KPI marts · Power BI · demo video |
+| Phan Văn Tiến | Tech Lead | [@AIVIETNAM-AIO-PhanVanTien](https://github.com/AIVIETNAM-AIO-PhanVanTien) | BRD · UML · architecture · MLflow strategy · business impact · PR reviews · slides |
+| Phúc Nhân Nguyễn | AI Eng · Model | — | RFM scoring · feature engineering · churn model · SHAP · K-Means |
+| Ngọc Phương | AI Eng · Pipeline | — | Repo · Docker · Airflow DAGs · dbt project · MLflow server · CI/CD · monitoring |
+| Hoàng Đức Kiên | QA · Reviewer | — | DoD · test plan · data/model/UAT validation · final QA report |
+
+> See [CONTRIBUTING.md](CONTRIBUTING.md) for branch conventions, PR process, and sprint ownership matrix.
 
 ---
 
 ## License
 
-Dataset: Online Retail List for RFM. Project code: see `LICENSE`.
+Dataset: Online Retail List for RFM (public, UCI ML Repository). Project code: [MIT](LICENSE).
