@@ -1,7 +1,7 @@
 -- X3: RFM monetary must reconcile with bronze eligible revenue (dedup + noise + RFM rules)
 with bronze as (
     select * from read_parquet(
-        '../data/bronze/year_month=*/data.parquet',
+        '{{ var("bronze_dir") }}/year_month=*/data.parquet',
         filename = false,
         hive_partitioning = false
     )

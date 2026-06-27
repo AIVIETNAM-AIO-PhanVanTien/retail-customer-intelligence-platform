@@ -109,13 +109,25 @@ def run_train_pipeline() -> None:
         save_shap_artifacts(shap_data)
         log_shap_to_mlflow(shap_data, X_test, FEATURE_COLUMNS)
 
-        # 6. Save artifacts locally
+        # 6. Save artifacts locally (include drift baselines for monitoring)
         logger.info("[6/6] Saving model artifacts...")
+        feature_stats = {
+            col: {
+                "mean": float(X_train[col].mean()),
+                "std": float(X_train[col].std()),
+            }
+            for col in FEATURE_COLUMNS
+            if col in X_train.columns
+        }
+        train_proba = pipeline.predict_proba(X_train)[:, 1]
         save_model_artifacts(
             model=pipeline,
             threshold=optimal_threshold,
             metrics=test_metrics,
             model_name="XGBoost",
+            feature_stats=feature_stats,
+            score_mean_train=float(train_proba.mean()),
+            score_std_train=float(train_proba.std()),
         )
 
         # Batch score all customers

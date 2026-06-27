@@ -15,6 +15,12 @@ clean-targets:
   - "target"
   - "dbt_packages"
 
+vars:
+  # Default: relative paths for local dbt runs (from the dbt/ directory).
+  # Override in Airflow with --vars 'silver_dir: /opt/airflow/data/silver bronze_dir: /opt/airflow/data/bronze'
+  silver_dir: '../data/silver'
+  bronze_dir: '../data/bronze'
+
 models:
   retail_medallion:
     staging:

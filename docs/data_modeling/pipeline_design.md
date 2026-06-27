@@ -43,8 +43,9 @@ the recommended target differ, both are stated explicitly.
 | P5 | `dbt run` (fact) | `fact_transactions` | **Full refresh** *(current)* → **Incremental** *(target)* | after P4 | full rebuild / partition |
 | P6 | `dbt run` (rfm) | `mart_rfm` | **Full recompute** (snapshot) | after P5 | full rebuild |
 | P7 | `dbt test` | data-quality gate | — (validation only) | after P3–P6 | n/a |
-| P8 | `ml train` | churn model + MLflow run | **Full retrain** | `@weekly` *(recommended)* | new MLflow run + registry |
-| P9 | `ml score` | `mart_churn_scores` | **Full recompute** (snapshot) | `@daily` after P6 | overwrite parquet |
+| P8 | `ml train` | churn model + MLflow run | **Full retrain** | `@weekly` (Sunday 03:00 UTC) | new MLflow run + registry |
+| P9 | `ml score` | `mart_churn_scores` | **Full recompute** (snapshot) | `@daily` after P7 | overwrite parquet |
+| P10 | `ml monitoring` | drift metrics → MLflow | **Snapshot** (append history) | `@daily` after P9 | append-only history log |
 
 ---
 
@@ -97,7 +98,13 @@ the recommended target differ, both are stated explicitly.
 
 ### P9 · `mart_churn_scores` — FULL RECOMPUTE (snapshot)
 - **File:** `ml/churn/score.py` / `ml/churn/pipeline.py --mode score` · **Grain:** customer · **Storage:** `data/gold/mart_churn_scores/mart_churn_scores.parquet`.
-- Loads latest model, scores **all** customers (`churn_probability`, `churn_flag` at F1-optimal threshold, `risk_tier`), overwrites the parquet. Recommended cadence `@daily` after P6.
+- Loads latest model, scores **all** customers (`churn_probability`, `churn_flag` at F1-optimal threshold, `risk_tier`), overwrites the parquet. Cadence: `@daily` after P7.
+
+### P10 · Monitoring — APPEND (snapshot history)
+- **File:** `ml/monitoring/pipeline.py` · **Storage:** `data/monitoring/drift_history.jsonl` + `baseline_snapshot.json`.
+- Runs after P9. Computes PSI (Population Stability Index) on `churn_probability` distribution and relative mean shift on 7 key features vs rolling baseline. Logs all metrics to MLflow `pipeline-monitoring` experiment.
+- **Alert threshold:** PSI > 0.20 sets `drift_alert=1` in MLflow and logs a WARNING. Baseline is updated only on stable runs (no alert) so it doesn't absorb drift silently.
+- **First run:** no baseline exists → current snapshot becomes the baseline (`baseline_created=1`).
 
 ---
 
@@ -126,31 +133,38 @@ data/gold/mart_churn_scores  → Power BI / retention export
 
 ---
 
-## 4. Target Orchestration DAG (Airflow)
+## 4. Orchestration DAG (Airflow) — Current State
 
-**Current** (`airflow/dags/retail_pipeline_dag.py`):
-```
-ingest_bronze → clean_silver → dbt_run → dbt_test
-```
+Two DAGs defined in `airflow/dags/retail_pipeline_dag.py`:
 
-**Target** (extend with the ML branch — Sprint 3 gap):
+### DAG 1 — `retail_pipeline_monthly` (`@monthly`, 1st of each month)
+
 ```
-ingest_bronze → clean_silver → dbt_run → dbt_test ─┬─ train_model (weekly) ─┐
-                                                    └─ score_customers ──────┴─ publish_scores
+ingest_bronze → clean_silver → dbt_run → dbt_test → score_customers → publish_scores → log_monitoring
 ```
 
-| Task | Command | Cadence |
+`dbt_test` is a **quality gate** — all downstream tasks inherit `trigger_rule="all_success"` and abort on failure.
+
+| Task | Command | Notes |
 | --- | --- | --- |
-| `ingest_bronze` | `python -m src.etl.bronze_ingest --all` | daily |
-| `clean_silver` | `python -m src.etl.silver_transform --all` | daily |
-| `dbt_run` | `dbt run` | daily |
-| `dbt_test` | `dbt test` | daily (gate) |
-| `train_model` | `python -m ml.churn.pipeline --mode train` | weekly |
-| `score_customers` | `python -m ml.churn.pipeline --mode score` | daily |
-| `publish_scores` | export `mart_churn_scores` → serving | daily |
+| `ingest_bronze` | `python -m src.etl.bronze_ingest --all` | Incremental; skips existing month partitions |
+| `clean_silver` | `python -m src.etl.silver_transform --all` | Incremental; quality reports per partition |
+| `dbt_run` | `dbt run` | Builds Gold star-schema + RFM + KPI marts |
+| `dbt_test` | `dbt test` | Quality gate (23 dbt assert tests) |
+| `score_customers` | `python -m ml.churn.pipeline --mode score` | Batch-scores all customers with latest model |
+| `publish_scores` | `python -m scripts.export_serving_app` | Copies scores → `app/` serving layer |
+| `log_monitoring` | `python -m ml.monitoring.pipeline --run-id <date>` | PSI drift detection; logs to MLflow `pipeline-monitoring` |
 
-> `dbt_test` is a **quality gate**: downstream ML tasks should not run if it fails
-> (current DAG runs them unconditionally — wire `trigger_rule` once ML tasks are added).
+### DAG 2 — `retail_pipeline_monthly_train` (`@monthly`, after DAG 1)
+
+```
+wait_for_dbt_test → train_model
+```
+
+| Task | Command | Notes |
+| --- | --- | --- |
+| `wait_for_dbt_test` | `ExternalTaskSensor(monthly.dbt_test)` | Blocks up to 2 h; uses `reschedule` mode |
+| `train_model` | `python -m ml.churn.pipeline --mode train` | Full XGBoost retrain; QA gate AUC ≥ 0.80; logs to MLflow |
 
 ---
 

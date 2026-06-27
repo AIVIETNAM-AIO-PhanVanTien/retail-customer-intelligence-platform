@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 # Paths
@@ -21,7 +22,12 @@ EVALUATION_WINDOW_DAYS = 90
 QA_AUC_GATE = 0.80
 
 # MLflow tracking
-MLFLOW_TRACKING_URI = "http://127.0.0.1:5001"
+# Default: file-based (PROJECT_ROOT/mlruns) — works locally and in Docker (volume-mounted).
+# Override with MLFLOW_TRACKING_URI env var if needed (e.g. remote tracking server).
+MLFLOW_TRACKING_URI = os.getenv(
+    "MLFLOW_TRACKING_URI",
+    str(PROJECT_ROOT / "mlruns"),
+)
 MLFLOW_EXPERIMENT_NAME = "churn-prediction"
 
 # Clustering
@@ -29,7 +35,12 @@ CLUSTERING_K_RANGE = range(3, 9)
 CLUSTERING_ARTIFACT_DIR = ARTIFACT_DIR / "clustering"
 MLFLOW_CLUSTERING_EXPERIMENT = "customer-clustering"
 
-# Feature columns (31 features)
+# Monitoring
+MLFLOW_MONITORING_EXPERIMENT = "pipeline-monitoring"
+MONITORING_LOG_DIR = PROJECT_ROOT / "data" / "monitoring"
+PSI_ALERT_THRESHOLD = 0.20
+
+# Feature columns (32 features)
 FEATURE_COLUMNS: list[str] = [
     # RFM Core
     "recency_days",

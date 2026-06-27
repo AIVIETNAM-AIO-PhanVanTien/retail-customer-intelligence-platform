@@ -1,10 +1,11 @@
-# DuckDB path is relative to this dbt/ folder.
-# If DataGrip (or another app) locks data/retail.duckdb, use:
-#   ../scripts/dbt_test.sh
-# from repo root, or disconnect the DB in DataGrip first.
 retail_duckdb:
   target: dev
   outputs:
     dev:
       type: duckdb
+      # Relative path — works when running dbt locally from the dbt/ directory
       path: '../data/retail.duckdb'
+    prod:
+      type: duckdb
+      # Absolute path — used by Airflow container (mounted at /opt/airflow/data/)
+      path: '/opt/airflow/data/retail.duckdb'

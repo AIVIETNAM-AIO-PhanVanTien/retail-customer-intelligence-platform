@@ -1,7 +1,7 @@
 -- S3 / X1: bronze → staging row drop must be explainable (dedup + noise filter only)
 with bronze as (
     select * from read_parquet(
-        '../data/bronze/year_month=*/data.parquet',
+        '{{ var("bronze_dir") }}/year_month=*/data.parquet',
         filename = false,
         hive_partitioning = false
     )
