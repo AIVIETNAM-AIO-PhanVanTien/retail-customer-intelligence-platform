@@ -1,7 +1,7 @@
 {
-  "model_name": "churn-xgboost",
+  "model_name": "XGBoost",
   "model_type": "XGBClassifier (sklearn Pipeline)",
-  "optimal_threshold": 0.5,
+  "optimal_threshold": 0.31293797492980957,
   "risk_tiers": {
     "High": 0.7,
     "Medium": 0.4,
@@ -44,7 +44,11 @@
   "n_features": 32,
   "n_customers": 5860,
   "metrics": {
-    "auc_roc": 0.0
+    "accuracy": 0.7580645161290323,
+    "precision_churn": 0.7965811965811965,
+    "recall_churn": 0.7740863787375415,
+    "f1_churn": 0.785172704296546,
+    "auc_roc": 0.8175366771528533
   },
   "score_summary": {
     "min": 0.05533503368496895,
@@ -54,8 +58,8 @@
     "max": 0.8992288112640381,
     "mean": 0.49831005930900574,
     "pct_high_risk": 0.2907849829351536,
-    "pct_churn_flag": 0.5189419795221843
+    "pct_churn_flag": 0.7170648464163822
   },
-  "source_run_id": "fc297b71",
-  "exported_at": "2026-06-24T00:47:08.599230+00:00"
+  "source_run_id": "n/a",
+  "exported_at": "2026-06-27T09:48:52.339645+00:00"
 }

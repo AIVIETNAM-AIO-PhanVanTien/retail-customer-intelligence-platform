@@ -36,7 +36,6 @@ import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -378,7 +377,7 @@ def build() -> None:
     # Audit
     write_build_log(n_silver, dim_customer, dim_product, dim_country, dim_date, fact, rfm)
 
-    print(f"\n[GOLD DONE] Star schema + RFM mart built successfully.")
+    print("\n[GOLD DONE] Star schema + RFM mart built successfully.")
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────

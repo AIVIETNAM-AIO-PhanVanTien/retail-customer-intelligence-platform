@@ -1,0 +1,97 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - "feature/**"
+      - "pipeline/**"
+      - "model/**"
+      - "data/**"
+      - "docs/**"
+      - "fix/**"
+  pull_request:
+    branches:
+      - main
+
+env:
+  PYTHON_VERSION: "3.10"
+
+jobs:
+  # ── 1. Lint ────────────────────────────────────────────────────────────────
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install ruff
+        run: pip install "ruff>=0.4.0"
+
+      - name: ruff check
+        run: ruff check . --output-format=github
+
+  # ── 2. Unit tests ─────────────────────────────────────────────────────────
+  pytest:
+    name: Unit tests (pytest)
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests (skip integration)
+        run: pytest tests/ -m "not integration" -q --tb=short
+
+  # ── 3. dbt compile ────────────────────────────────────────────────────────
+  dbt-compile:
+    name: dbt compile
+    needs: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dbt
+        run: pip install dbt-core==1.8.8 dbt-duckdb==1.8.4 "protobuf<5"
+
+      - name: dbt parse (validate SQL + YAML without data)
+        working-directory: dbt
+        run: dbt parse --profiles-dir . --project-dir .
+
+  # ── 4. Docker build ───────────────────────────────────────────────────────
+  docker-build:
+    name: Docker build (HF Spaces app)
+    needs: pytest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Build serving image
+        uses: docker/build-push-action@v5
+        with:
+          context: ./app
+          push: false
+          tags: churn-serving:ci
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
