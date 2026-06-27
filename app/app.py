@@ -118,9 +118,96 @@ st.caption(
     "BI/KPI reporting lives in Power BI; this Space serves the ML model."
 )
 
-tab_one, tab_list, tab_whatif = st.tabs(
-    ["🔎 Score a customer", "📋 Retention list", "🧪 What-if"]
+tab_overview, tab_one, tab_list, tab_whatif = st.tabs(
+    ["📊 Overview", "🔎 Score a customer", "📋 Retention list", "🧪 What-if"]
 )
+
+
+# ── Tab 0: overview dashboard ────────────────────────────────────────────────
+with tab_overview:
+    # Pre-compute scored base at sidebar threshold
+    ov = customers.copy()
+    ov["churn_flag"] = (ov["churn_probability"] >= threshold).astype(int)
+    ov["risk_tier"] = ov["churn_probability"].map(risk_tier)
+
+    # ── KPI row ──────────────────────────────────────────────────────────────
+    k1, k2, k3, k4, k5 = st.columns(5)
+    k1.metric("Total customers", f"{len(ov):,}")
+    k2.metric("Churn rate", f"{ov['churn_flag'].mean():.1%}")
+    k3.metric("High risk", f"{(ov['risk_tier'] == 'High').sum():,}")
+    k4.metric("Medium risk", f"{(ov['risk_tier'] == 'Medium').sum():,}")
+    k5.metric("Revenue at risk (£)", f"{ov.loc[ov['churn_flag'] == 1, 'monetary'].sum():,.0f}")
+
+    st.divider()
+
+    col_left, col_right = st.columns(2)
+
+    # Score distribution histogram
+    with col_left:
+        st.markdown("**Churn probability distribution**")
+        hist = go.Figure(
+            go.Histogram(
+                x=ov["churn_probability"],
+                nbinsx=40,
+                marker_color="#1f77b4",
+                opacity=0.8,
+            )
+        )
+        hist.add_vline(
+            x=threshold,
+            line_dash="dash",
+            line_color="red",
+            annotation_text=f"threshold={threshold:.2f}",
+        )
+        hist.update_layout(
+            height=300,
+            margin=dict(t=10, b=10, l=10, r=10),
+            xaxis_title="Churn probability",
+            yaxis_title="Customers",
+        )
+        st.plotly_chart(hist, use_container_width=True)
+
+    # Risk tier breakdown
+    with col_right:
+        st.markdown("**Risk tier breakdown**")
+        tier_counts = ov["risk_tier"].value_counts().reindex(["High", "Medium", "Low"], fill_value=0)
+        pie = go.Figure(
+            go.Pie(
+                labels=tier_counts.index.tolist(),
+                values=tier_counts.values.tolist(),
+                marker_colors=["#d62728", "#ff7f0e", "#2ca02c"],
+                hole=0.4,
+            )
+        )
+        pie.update_layout(height=300, margin=dict(t=10, b=10, l=10, r=10))
+        st.plotly_chart(pie, use_container_width=True)
+
+    # RFM segment breakdown
+    if "segment" in ov.columns:
+        st.markdown("**RFM segment breakdown**")
+        seg_summary = (
+            ov.groupby("segment", observed=True)
+            .agg(
+                customers=("customer_id", "count"),
+                churn_rate=("churn_flag", "mean"),
+                avg_monetary=("monetary", "mean"),
+            )
+            .sort_values("churn_rate", ascending=False)
+            .reset_index()
+        )
+        seg_summary["churn_rate"] = seg_summary["churn_rate"].map("{:.1%}".format)
+        seg_summary["avg_monetary"] = seg_summary["avg_monetary"].map("£{:,.0f}".format)
+        st.dataframe(seg_summary, hide_index=True, use_container_width=True)
+
+    # Model info
+    st.divider()
+    st.markdown("**Model info**")
+    m = meta.get("metrics", {})
+    mi1, mi2, mi3, mi4 = st.columns(4)
+    mi1.metric("Model", meta.get("model_type", "XGBoost"))
+    mi2.metric("Test AUC", f"{m.get('auc_roc', 0):.4f}" if m.get("auc_roc") else "—")
+    mi3.metric("Features", meta.get("n_features", len(FEATURES)))
+    mi4.metric("Exported", meta.get("exported_at", "—")[:10])
 
 
 # ── Tab 1: single customer ───────────────────────────────────────────────────

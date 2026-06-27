@@ -26,5 +26,5 @@ SELECT
     invoice_day_of_week,
     invoice_week,
     year_month
-FROM read_parquet('../data/silver/year_month=*/data_silver.parquet',
+FROM read_parquet('{{ var("silver_dir") }}/year_month=*/data_silver.parquet',
                   filename=false, hive_partitioning=false)

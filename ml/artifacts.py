@@ -21,12 +21,15 @@ def save_model_artifacts(
     metrics: dict[str, float],
     model_name: str,
     artifact_dir: Path | None = None,
+    feature_stats: dict | None = None,
+    score_mean_train: float | None = None,
+    score_std_train: float | None = None,
 ) -> Path:
     """Persist trained model + metadata to disk.
 
     Saves:
     - ``model.joblib`` — the trained sklearn Pipeline
-    - ``metadata.json`` — threshold, feature_columns, metrics, timestamp
+    - ``metadata.json`` — threshold, feature_columns, metrics, drift baseline, timestamp
     """
     out = artifact_dir or ARTIFACT_DIR
     out.mkdir(parents=True, exist_ok=True)
@@ -42,6 +45,10 @@ def save_model_artifacts(
         "optimal_threshold": threshold,
         "feature_columns": FEATURE_COLUMNS,
         "metrics": metrics,
+        # Drift baselines — used by ml/monitoring/drift.py
+        "feature_stats": feature_stats or {},
+        "score_mean_train": score_mean_train,
+        "score_std_train": score_std_train,
         "saved_at": datetime.now(timezone.utc).isoformat(),
     }
     meta_path = out / "metadata.json"

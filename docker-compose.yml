@@ -11,6 +11,8 @@ x-airflow-common: &airflow-common
     AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY}
     AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY}
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    MLFLOW_TRACKING_URI: 'file:///opt/airflow/mlruns'
+    MLFLOW_ALLOW_FILE_STORE: 'true'
     # Pin container paths so a stray AIRFLOW_HOME/DAGS_FOLDER in .env (host-relative)
     # cannot break DAG discovery. environment: overrides env_file:, so this always wins.
     AIRFLOW_HOME: /opt/airflow
@@ -24,6 +26,7 @@ x-airflow-common: &airflow-common
     - ./src:/opt/airflow/src
     - ./requirements.txt:/opt/airflow/requirements.txt
     - ./scripts:/opt/airflow/scripts
+    - ./mlruns:/opt/airflow/mlruns
   depends_on:
     postgres:
       condition: service_healthy
@@ -80,14 +83,17 @@ services:
         condition: service_completed_successfully
 
   # ─── MLflow tracking server ───────────────────────────────────────────────
-  # Note: using SQLite backend — sufficient for a single-node setup.
-  # Upgrade to postgres backend if you need concurrent writers or horizontal scale.
+  # Uses file-based backend (./mlruns) shared with Airflow containers.
+  # Airflow writes experiments via MLFLOW_TRACKING_URI=file:///opt/airflow/mlruns
+  # (same host dir), avoiding the DNS rebinding 403 when using http://mlflow:5000.
   mlflow:
     build:
       context: .
       dockerfile: Dockerfile.mlflow
     ports:
       - "5001:5000"
+    environment:
+      MLFLOW_ALLOW_FILE_STORE: 'true'
     volumes:
       - ./mlruns:/mlflow/mlruns
       - ./models:/mlflow/models
@@ -95,9 +101,8 @@ services:
       mlflow server
       --host 0.0.0.0
       --port 5000
-      --backend-store-uri sqlite:///mlflow/mlflow.db
-      --serve-artifacts
-      --artifacts-destination /mlflow/mlruns
+      --backend-store-uri file:///mlflow/mlruns
+      --default-artifact-root file:///mlflow/mlruns
 
   # ─── Streamlit dashboard (ACM1-75) ────────────────────────────────────────
   # Production-ready: restart policy, ml/ + app/ volumes mounted.

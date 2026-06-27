@@ -4,7 +4,7 @@ with bronze as (
         *,
         strftime(invoice_date, '%Y-%m') as year_month
     from read_parquet(
-        '../data/bronze/year_month=*/data.parquet',
+        '{{ var("bronze_dir") }}/year_month=*/data.parquet',
         filename = false,
         hive_partitioning = false
     )
