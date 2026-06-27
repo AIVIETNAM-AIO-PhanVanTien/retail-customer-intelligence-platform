@@ -14,9 +14,7 @@ from __future__ import annotations
 
 import json
 import logging
-from pathlib import Path
 
-import numpy as np
 import pandas as pd
 
 from ml.config import ARTIFACT_DIR, FEATURE_COLUMNS, GOLD_DIR

@@ -1,0 +1,29 @@
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+exclude = [
+    ".git",
+    "__pycache__",
+    "dbt/target",
+    "mlruns",
+    "AIConquer2026_Kit",
+    "AIConquer2026_Kit_v3",
+    "notebooks",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "W"]
+ignore = [
+    "E501",  # line too long — covered by line-length above
+    "E402",  # module import not at top (scripts / notebook-style files)
+    "E712",  # comparison to True/False — readability preference
+    "F841",  # local variable assigned but never used — cleaned up over time
+    "W291",  # trailing whitespace
+    "W293",  # whitespace before ':'
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: tests that require built data/ artifacts (bronze, silver, gold, duckdb)",
+]

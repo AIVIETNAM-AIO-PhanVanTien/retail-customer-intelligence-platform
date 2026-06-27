@@ -1,11 +1,9 @@
 """Tests for Bronze ingestion."""
 
 import shutil
-from pathlib import Path
 
 import pandas as pd
 import pyarrow.parquet as pq
-import pytest
 
 from src.etl import bronze_ingest
 

@@ -1,7 +1,6 @@
 """Tests for TabularDataQuality utility."""
 
 import pandas as pd
-import pytest
 
 from src.utils.data_quality_check import TabularDataQuality
 

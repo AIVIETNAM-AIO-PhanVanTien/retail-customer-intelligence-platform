@@ -27,6 +27,8 @@ HERE = Path(__file__).resolve().parent
 MODEL_PATH = HERE / "model" / "model.pkl"
 META_PATH = HERE / "model" / "metadata.json"
 DATA_PATH = HERE / "data" / "customers.parquet"
+CLUSTER_PROFILES_PATH = HERE / "data" / "cluster_profiles.parquet"
+MONITORING_PATH = HERE / "data" / "monitoring.parquet"
 
 st.set_page_config(
     page_title="Churn Serving · Retail Intelligence",
@@ -51,6 +53,20 @@ def load_metadata() -> dict:
 @st.cache_data(show_spinner="Loading customers…")
 def load_customers() -> pd.DataFrame:
     return pd.read_parquet(DATA_PATH)
+
+
+@st.cache_data(show_spinner=False)
+def load_cluster_profiles() -> pd.DataFrame | None:
+    if not CLUSTER_PROFILES_PATH.exists():
+        return None
+    return pd.read_parquet(CLUSTER_PROFILES_PATH)
+
+
+@st.cache_data(show_spinner=False)
+def load_monitoring() -> pd.DataFrame | None:
+    if not MONITORING_PATH.exists():
+        return None
+    return pd.read_parquet(MONITORING_PATH)
 
 
 model = load_model()
@@ -118,8 +134,8 @@ st.caption(
     "BI/KPI reporting lives in Power BI; this Space serves the ML model."
 )
 
-tab_overview, tab_one, tab_list, tab_whatif = st.tabs(
-    ["📊 Overview", "🔎 Score a customer", "📋 Retention list", "🧪 What-if"]
+tab_overview, tab_one, tab_list, tab_whatif, tab_clusters, tab_monitoring = st.tabs(
+    ["📊 Overview", "🔎 Score a customer", "📋 Retention list", "🧪 What-if", "🔵 Clustering", "📈 Monitoring"]
 )
 
 
@@ -394,3 +410,273 @@ with tab_whatif:
     a.metric("Churn probability", f"{p:.1%}")
     b.metric("Risk tier", t)
     c.metric("Decision", "⚠️ CHURN" if p >= threshold else "✅ Retain")
+
+
+# ── Tab 4: clustering ────────────────────────────────────────────────────────
+with tab_clusters:
+    profiles = load_cluster_profiles()
+    if profiles is None:
+        st.warning("cluster_profiles.parquet not found. Re-run `scripts/export_serving_app.py`.")
+    else:
+        has_cluster = "cluster_name" in customers.columns
+
+        # ── KPI row ──────────────────────────────────────────────────────────
+        ck1, ck2, ck3, ck4 = st.columns(4)
+        ck1.metric("Clusters", int(len(profiles)))
+        ck2.metric("Total customers", f"{len(customers):,}")
+        if has_cluster:
+            largest = profiles.loc[profiles["cluster_size"].idxmax(), "cluster_name"]
+            ck3.metric("Largest cluster", largest)
+            smallest = profiles.loc[profiles["cluster_size"].idxmin(), "cluster_name"]
+            ck4.metric("Smallest cluster", smallest)
+
+        st.divider()
+
+        cl_left, cl_right = st.columns(2)
+
+        # Cluster distribution pie
+        with cl_left:
+            st.markdown("**Cluster distribution**")
+            pie_c = go.Figure(
+                go.Pie(
+                    labels=profiles["cluster_name"].tolist(),
+                    values=profiles["cluster_size"].tolist(),
+                    hole=0.4,
+                    textinfo="label+percent",
+                )
+            )
+            pie_c.update_layout(height=320, margin=dict(t=10, b=10, l=10, r=10), showlegend=False)
+            st.plotly_chart(pie_c, use_container_width=True)
+
+        # Key feature comparison bar
+        with cl_right:
+            st.markdown("**Avg monetary by cluster**")
+            bar_mon = go.Figure(
+                go.Bar(
+                    x=profiles["cluster_name"],
+                    y=profiles["monetary"].round(0),
+                    marker_color=["#1f77b4", "#ff7f0e", "#2ca02c", "#d62728",
+                                  "#9467bd", "#8c564b"][:len(profiles)],
+                    text=profiles["monetary"].round(0).astype(int),
+                    textposition="outside",
+                )
+            )
+            bar_mon.update_layout(
+                height=320,
+                margin=dict(t=10, b=10, l=10, r=10),
+                yaxis_title="Avg monetary (£)",
+                xaxis_tickangle=-20,
+            )
+            st.plotly_chart(bar_mon, use_container_width=True)
+
+        # Recency + Frequency grouped bar
+        st.markdown("**Avg recency (days) & frequency by cluster**")
+        fig_rf = go.Figure()
+        fig_rf.add_trace(go.Bar(
+            name="Recency (days)",
+            x=profiles["cluster_name"],
+            y=profiles["recency_days"].round(1),
+            yaxis="y",
+        ))
+        fig_rf.add_trace(go.Bar(
+            name="Frequency",
+            x=profiles["cluster_name"],
+            y=profiles["frequency"].round(1),
+            yaxis="y2",
+        ))
+        fig_rf.update_layout(
+            height=320,
+            barmode="group",
+            margin=dict(t=10, b=10, l=10, r=10),
+            yaxis=dict(title="Recency (days)"),
+            yaxis2=dict(title="Frequency", overlaying="y", side="right"),
+            legend=dict(orientation="h", y=1.08),
+        )
+        st.plotly_chart(fig_rf, use_container_width=True)
+
+        # Churn rate by cluster
+        if has_cluster:
+            st.markdown("**Churn rate by cluster** (at current threshold)")
+            cust_c = customers.copy()
+            cust_c["churn_flag"] = (cust_c["churn_probability"] >= threshold).astype(int)
+            churn_by_cluster = (
+                cust_c.groupby("cluster_name", observed=True)["churn_flag"]
+                .mean()
+                .reset_index()
+                .rename(columns={"churn_flag": "churn_rate"})
+                .sort_values("churn_rate", ascending=False)
+            )
+            bar_churn = go.Figure(
+                go.Bar(
+                    x=churn_by_cluster["cluster_name"],
+                    y=(churn_by_cluster["churn_rate"] * 100).round(1),
+                    text=(churn_by_cluster["churn_rate"] * 100).round(1).astype(str) + "%",
+                    textposition="outside",
+                    marker_color="#d62728",
+                )
+            )
+            bar_churn.update_layout(
+                height=280,
+                margin=dict(t=10, b=10, l=10, r=10),
+                yaxis_title="Churn rate (%)",
+                xaxis_tickangle=-20,
+            )
+            st.plotly_chart(bar_churn, use_container_width=True)
+
+        st.divider()
+
+        # Cluster profiles table
+        st.markdown("**Cluster profiles**")
+        disp_cols = [c for c in [
+            "cluster_name", "cluster_size", "cluster_pct",
+            "recency_days", "frequency", "monetary",
+            "avg_order_value", "tenure_days", "cancellation_rate",
+        ] if c in profiles.columns]
+        st.dataframe(
+            profiles[disp_cols].round(2).rename(columns={
+                "cluster_name": "Cluster",
+                "cluster_size": "Customers",
+                "cluster_pct": "% Base",
+                "recency_days": "Recency (d)",
+                "frequency": "Frequency",
+                "monetary": "Monetary (£)",
+                "avg_order_value": "Avg order (£)",
+                "tenure_days": "Tenure (d)",
+                "cancellation_rate": "Cancel rate",
+            }),
+            hide_index=True,
+            use_container_width=True,
+        )
+
+        # Customer list per cluster
+        if has_cluster:
+            st.divider()
+            st.markdown("**Customers by cluster**")
+            selected_cluster = st.selectbox(
+                "Select cluster",
+                options=sorted(customers["cluster_name"].dropna().unique().tolist()),
+            )
+            cluster_view = customers[customers["cluster_name"] == selected_cluster].copy()
+            cluster_view["churn_flag"] = (cluster_view["churn_probability"] >= threshold).astype(int)
+            cluster_view = cluster_view.sort_values("churn_probability", ascending=False)
+            cv_cols = [c for c in [
+                "customer_id", "segment", "cluster_name",
+                "churn_probability", "recency_days", "frequency", "monetary",
+            ] if c in cluster_view.columns]
+            st.caption(f"{len(cluster_view):,} customers in **{selected_cluster}**")
+            st.dataframe(
+                cluster_view[cv_cols].assign(
+                    churn_probability=cluster_view["churn_probability"].round(3),
+                    monetary=cluster_view["monetary"].round(0),
+                ),
+                hide_index=True,
+                use_container_width=True,
+                height=380,
+            )
+
+
+# ── Tab 5: monitoring ────────────────────────────────────────────────────────
+with tab_monitoring:
+    mon_df = load_monitoring()
+    if mon_df is None:
+        st.warning("monitoring.parquet not found. Re-run `scripts/export_serving_app.py`.")
+    else:
+        model_drift = mon_df[mon_df["category"] == "model_drift"]
+        data_drift = mon_df[mon_df["category"] == "data_drift"]
+
+        def _get(df: pd.DataFrame, name: str, default: float = 0.0) -> float:
+            row = df[df["metric_name"] == name]["metric_value"]
+            return float(row.iloc[0]) if len(row) > 0 else default
+
+        # ── KPI row ──────────────────────────────────────────────────────────
+        st.subheader(f"Latest run — {mon_df['run_date'].max()}")
+        mk1, mk2, mk3, mk4 = st.columns(4)
+        mk1.metric("Customers scored", f"{int(_get(model_drift, 'total_customers_scored')):,}")
+        mk2.metric("Score mean", f"{_get(model_drift, 'score_mean'):.4f}")
+        mk3.metric("High risk %", f"{_get(model_drift, 'pct_high_risk') * 100:.1f}%")
+        mk4.metric("Features drifted", int(_get(data_drift, "n_features_drifted")))
+
+        st.divider()
+
+        mon_left, mon_right = st.columns(2)
+
+        # Score distribution
+        with mon_left:
+            st.markdown("**Score distribution (current run)**")
+            percentiles = ["p25", "p50", "p75", "p90"]
+            pct_vals = [_get(model_drift, f"score_{p}") for p in percentiles]
+            bar_score = go.Figure(
+                go.Bar(
+                    x=[f"P{p[1:]}" for p in percentiles],
+                    y=[round(v * 100, 1) for v in pct_vals],
+                    text=[f"{v * 100:.1f}%" for v in pct_vals],
+                    textposition="outside",
+                    marker_color="#1f77b4",
+                )
+            )
+            bar_score.update_layout(
+                height=300,
+                margin=dict(t=10, b=10, l=10, r=10),
+                yaxis_title="Churn probability (%)",
+                yaxis_range=[0, 100],
+            )
+            st.plotly_chart(bar_score, use_container_width=True)
+
+        # Risk tier breakdown
+        with mon_right:
+            st.markdown("**Risk tier breakdown (current run)**")
+            tier_names = ["High risk", "Medium risk", "Low risk"]
+            tier_vals = [
+                int(_get(model_drift, "n_high_risk")),
+                int(_get(model_drift, "n_medium_risk")),
+                int(_get(model_drift, "n_low_risk")),
+            ]
+            pie_tier = go.Figure(
+                go.Pie(
+                    labels=tier_names,
+                    values=tier_vals,
+                    marker_colors=["#d62728", "#ff7f0e", "#2ca02c"],
+                    hole=0.4,
+                )
+            )
+            pie_tier.update_layout(height=300, margin=dict(t=10, b=10, l=10, r=10))
+            st.plotly_chart(pie_tier, use_container_width=True)
+
+        # Score distribution z-score
+        score_z = _get(model_drift, "score_distribution_z")
+        z_color = "🟢" if score_z < 1.0 else "🟡" if score_z < 2.0 else "🔴"
+        st.info(f"{z_color} Score distribution z-score vs training baseline: **{score_z:.4f}** "
+                f"{'(stable)' if score_z < 2.0 else '⚠️ drift detected'}")
+
+        st.divider()
+
+        # Data drift summary
+        st.markdown("**Data drift summary**")
+        n_checked = int(_get(data_drift, "n_features_checked"))
+        n_drifted = int(_get(data_drift, "n_features_drifted"))
+        drift_rate = _get(data_drift, "drift_rate")
+
+        dd1, dd2, dd3 = st.columns(3)
+        dd1.metric("Features checked", n_checked)
+        dd2.metric("Features drifted (|z|>3)", n_drifted)
+        dd3.metric("Drift rate", f"{drift_rate:.1%}")
+
+        if n_checked == 0:
+            st.caption(
+                "No feature baseline in model metadata — data drift detection requires "
+                "`feature_stats` to be saved during training."
+            )
+        elif n_drifted == 0:
+            st.success("No data drift detected across all checked features.")
+        else:
+            st.warning(f"{n_drifted} feature(s) drifted beyond z=3 threshold.")
+
+        st.divider()
+
+        # Full monitoring log
+        st.markdown("**Full monitoring log**")
+        st.dataframe(
+            mon_df.sort_values(["run_date", "category"], ascending=[False, True]),
+            hide_index=True,
+            use_container_width=True,
+        )

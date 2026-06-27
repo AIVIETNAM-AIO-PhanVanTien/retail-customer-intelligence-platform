@@ -1,12 +1,10 @@
 """Tests for Silver transform."""
 
 import json
-from pathlib import Path
 
 import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
-import pytest
 
 from src.etl import silver_transform
 
