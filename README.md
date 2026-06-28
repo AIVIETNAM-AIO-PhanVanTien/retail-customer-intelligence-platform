@@ -104,7 +104,8 @@ Raw load   →    Clean · dedup  →    Star schema      →    KPI marts  → 
 │       └── monitoring.parquet  # model + data drift metrics
 │
 ├── dashboard/
-│   └── app.py                  # local Pipeline Ops dashboard (docker-compose streamlit service)
+│   ├── Report_retail_customer_intelligence.pbix  # Fabric report file
+│   └── semantic_model.pbix                       # Fabric semantic model
 │
 ├── dbt/
 │   ├── models/
@@ -112,7 +113,7 @@ Raw load   →    Clean · dedup  →    Star schema      →    KPI marts  → 
 │   │   ├── intermediate/       # int_transactions_cleaned
 │   │   └── marts/              # dim_* · fact_transactions · mart_rfm
 │   │                           # mart_features · mart_kpi_monthly · mart_churn_scores
-│   ├── tests/                  # 25 custom SQL assertion tests
+│   ├── tests/                  # 35 custom SQL assertion tests
 │   ├── dbt_project.yml
 │   └── profiles.yml            # dev (relative path) + prod (Airflow absolute path)
 │
@@ -137,7 +138,7 @@ Raw load   →    Clean · dedup  →    Star schema      →    KPI marts  → 
 │
 ├── scripts/
 │   ├── export_serving_app.py   # bundle model + customers + clusters + monitoring → app/
-│   ├── export_powerbi.py       # export Gold marts → data/powerbi/ (Parquet for PBI Desktop)
+│   ├── export_powerbi.py       # export Gold marts → Parquet (Power BI) or CSV (Microsoft Fabric)
 │   └── dbt_test.sh             # convenience wrapper: dbt run + dbt test
 │
 ├── tests/
@@ -219,7 +220,7 @@ docker compose up --build -d
 | MLflow UI | http://localhost:5000 |
 | Streamlit Ops | http://localhost:8501 |
 
-> **Dataset:** place `online_retail_listing.csv` under `data/raw/` (semicolon-delimited, ~1.01M rows). Not committed — see `.gitignore`.
+> **Dataset:** place `online_retail_listing.csv` under `data/raw/` (semicolon-delimited, Latin-1, ~1.05M rows, 2009–2011). Not committed — see `.gitignore`.
 
 > **Primary BI dashboard is Power BI** — open `data/powerbi/*.pbix` in Power BI Desktop after running `make pipeline` + `python scripts/export_powerbi.py`.
 
@@ -297,7 +298,7 @@ Global feature importance tracked in `ml/artifacts/shap/` and visualised in Stre
 
 | Layer | Tool | What's tested |
 |---|---|---|
-| **Data quality** | dbt tests (25 SQL assertions) | unique · not_null · accepted_values · FK integrity · value ranges |
+| **Data quality** | dbt tests (35 SQL assertions) | unique · not_null · accepted_values · FK integrity · value ranges |
 | **Pipeline unit** | pytest (`tests/bronze/` · `tests/silver/` · `tests/gold/`) | transform logic · date-shift · quality check utils |
 | **Cross-layer** | pytest `tests/cross_layer/` (integration) | Bronze→Silver→Gold row reconciliation |
 | **ML** | pytest `tests/ml/` | feature schema · value ranges · AUC gate · UAT scoring rules |
@@ -348,6 +349,7 @@ Visible in the **📈 Monitoring** tab of the Streamlit app and the local ops da
 | Meeting Minutes S1 | [docs/meeting_minutes/sprint_1.md](docs/meeting_minutes/sprint_1.md) | Kickoff · architecture decisions · role assignments |
 | Meeting Minutes S2 | [docs/meeting_minutes/sprint_2.md](docs/meeting_minutes/sprint_2.md) | Data pipeline decisions · issues resolved |
 | Meeting Minutes S3 | [docs/meeting_minutes/sprint_3.md](docs/meeting_minutes/sprint_3.md) | ML decisions · threshold · feature store |
+| Meeting Minutes S4 | [docs/meeting_minutes/sprint_4.md](docs/meeting_minutes/sprint_4.md) | Final delivery · dashboard · CI/CD · retrospective |
 | Contributing Guide | [CONTRIBUTING.md](CONTRIBUTING.md) | Role ownership · branch conventions · PR process · local setup |
 
 ---
@@ -369,21 +371,21 @@ Visible in the **📈 Monitoring** tab of the Streamlit app and the local ops da
 | GitHub Actions CI/CD | Pipeline | ✅ Done |
 | Docker Compose full stack | Pipeline | ✅ Done |
 | pytest suite (unit + ML + integration) | QA | ✅ Done |
-| Power BI dashboard | Data | 🔄 In progress |
-| Business Impact Report | Tech Lead | 🔄 In progress |
-| LaTeX Technical Report | All | 🔄 In progress |
+| Fabric dashboard (Business Performance + Customer Intelligence) | Data | ✅ Done |
+| Business Impact Report | Tech Lead | ✅ Done |
+| LaTeX Technical Report | All | ✅ Done |
 
 ---
 
 ## 14. Team
 
-| Member | Role | GitHub | Primary Scope |
-|---|---|---|---|
-| Võ Ngọc Gia Bảo | Team Leader · Data | — | Sprint planning · EDA · Star Schema · dbt models · KPI marts · Power BI · demo video |
-| Phan Văn Tiến | Tech Lead | [@AIVIETNAM-AIO-PhanVanTien](https://github.com/AIVIETNAM-AIO-PhanVanTien) | BRD · UML · architecture · MLflow strategy · business impact · PR reviews · slides |
-| Phúc Nhân Nguyễn | AI Eng · Model | — | RFM scoring · feature engineering · churn model · SHAP · K-Means |
-| Ngọc Phương | AI Eng · Pipeline | — | Repo · Docker · Airflow DAGs · dbt project · MLflow server · CI/CD · monitoring |
-| Hoàng Đức Kiên | QA · Reviewer | — | DoD · test plan · data/model/UAT validation · final QA report |
+| Member | Role | Primary Scope |
+|---|---|---|
+| Võ Ngọc Gia Bảo | Team Leader · Data | Sprint planning · EDA · Star Schema · dbt models · KPI marts · Power BI · demo video |
+| Phan Văn Tiến | Tech Lead | BRD · UML · architecture · MLflow strategy · business impact · PR reviews · slides |
+| Phúc Nhân Nguyễn | AI Eng · Model | RFM scoring · feature engineering · churn model · SHAP · K-Means |
+| Ngọc Phương | AI Eng · Pipeline | Repo · Docker · Airflow DAGs · dbt project · MLflow server · CI/CD · monitoring |
+| Hoàng Đức Kiên | QA · Reviewer | DoD · test plan · data/model/UAT validation · final QA report |
 
 > See [CONTRIBUTING.md](CONTRIBUTING.md) for branch conventions, PR process, and sprint ownership matrix.
 
@@ -391,4 +393,4 @@ Visible in the **📈 Monitoring** tab of the Streamlit app and the local ops da
 
 ## License
 
-Dataset: Online Retail List for RFM (public, UCI ML Repository). Project code: [MIT](LICENSE).
+Dataset: [Online Retail Listing](https://www.kaggle.com/datasets/ilkeryildiz/online-retail-listing) (public, Kaggle). Project code: [MIT](LICENSE).

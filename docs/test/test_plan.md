@@ -1,7 +1,7 @@
 # Test Plan & QA Checklist (English)
 
 Project: Retail Customer Intelligence Platform
-Scope: Sprint 1 & Sprint 2
+Scope: Sprint 1, Sprint 2, Sprint 3 & Sprint 4
 Owner: QA / Reviewer
 Reference: `Project_Plan.md`, `README.md`
 
@@ -13,7 +13,7 @@ A test plan is a document that describes the strategy, objectives, scope, schedu
 
 For this project, the test plan serves to align how QA will verify:
 
-- what is in scope for Sprint 1 and Sprint 2;
+- what is in scope for all four sprints;
 - how testing will be performed and what criteria apply;
 - who is responsible for each testing task;
 - when testing should stop, be suspended, or resume;
@@ -25,13 +25,14 @@ According to best practices, the test plan should cover four main areas: **scope
 
 ## 2. QA Objectives
 
-The QA objectives for Sprint 1 and Sprint 2 are to ensure the team is aligned from the start, reduce the risk of incorrect implementation, and confirm the data platform can reliably reach the RFM mart.
+The QA objectives across all four sprints are to ensure the team is aligned from the start, reduce the risk of incorrect implementation, and confirm the data platform delivers reliable outputs end-to-end from raw CSV to dashboard and ML serving.
 
-QA will focus on three layers:
+QA will focus on four layers across all sprints:
 
 - Requirements correctness: align with the BRD, scope, deliverables, and priority.
-- Logical correctness: data flow, star schema, cleaning rules, and RFM segmentation must be consistent.
-- Readiness to continue: documentation, code skeletons, pipeline skeletons and validation logs must be clear enough so Sprint 3 does not need to rework the foundation.
+- Logical correctness: data flow, star schema, cleaning rules, RFM segmentation, ML pipeline, and dashboard numbers must be consistent.
+- Integration correctness: end-to-end pipeline from CSV → Bronze → Silver → Gold → ML → Dashboard must be reproducible.
+- Readiness to deliver: documentation, CI/CD, test coverage, and UAT sign-off must be complete before final release.
 
 ---
 
@@ -61,6 +62,31 @@ Sprint 2 testing scope focuses on:
 - Airflow DAG: `ingest → clean → dbt run → dbt test → publish Gold`
 - RFM scoring logic and segmentation labels
 - Validation logs for row counts, nulls, duplicates, FK integrity, revenue reconciliation
+
+### 3.3 Sprint 3
+
+Sprint 3 testing scope focuses on:
+
+- Feature engineering: 32 features (RFM + behavioral + trend + velocity)
+- Churn model: XGBoost sklearn Pipeline — training, evaluation, MLflow tracking
+- Batch scoring: `churn_probability`, `churn_flag`, `risk_tier` per customer
+- Model validation: AUC gate (> 0.80), feature schema, value ranges
+- `mart_features` and `mart_churn_scores` correctness
+- Airflow DAG extension: `train → score → publish`
+- MLflow experiment tracking and model registry
+
+### 3.4 Sprint 4
+
+Sprint 4 testing scope focuses on:
+
+- K-Means clustering: 3 clusters, SHAP explainability
+- Streamlit serving app: churn + clustering + monitoring tabs
+- HuggingFace Spaces deployment: public accessibility
+- GitHub Actions CI/CD: lint → dbt test → pytest → docker build pipeline
+- Model and data drift monitoring: `mart_monitoring` metrics
+- Power BI / Fabric dashboard: Business Performance + Customer Intelligence pages
+- UAT: dashboard KPI numbers reconcile with Gold tables
+- CSV export pipeline: `scripts/export_powerbi.py --format csv`
 
 ---
 
@@ -291,7 +317,100 @@ QA will apply a four-layer approach:
 
 ---
 
-## 10. Deliverables Review Checklist
+## 10. QA Checklist — Sprint 3
+
+### 10.1 Feature engineering
+
+- [ ] All 32 features are present in `mart_features` with correct column names.
+- [ ] Feature value ranges are within expected bounds (validated by `assert_features_value_ranges`).
+- [ ] No nulls in key feature columns.
+- [ ] `is_one_time_buyer` and `is_uk` flags are binary (0/1).
+- [ ] `cancellation_rate` is between 0 and 1.
+
+### 10.2 Churn model
+
+- [ ] XGBoost Pipeline (imputer + model) trains without errors.
+- [ ] AUC on test set exceeds 0.80 (gate enforced in `ml/churn/uat.py`).
+- [ ] `churn_probability` values are between 0 and 1.
+- [ ] `churn_flag` is binary (0/1).
+- [ ] `risk_tier` values are one of: High, Medium, Low.
+- [ ] Model and metadata are saved to `ml/artifacts/`.
+
+### 10.3 MLflow tracking
+
+- [ ] Each training run is logged with parameters, metrics, and artifacts.
+- [ ] Model is registered in MLflow model registry.
+- [ ] Run ID is stored in `metadata.json` for traceability.
+
+### 10.4 Batch scoring
+
+- [ ] `mart_churn_scores` contains one row per customer.
+- [ ] Customer count in `mart_churn_scores` matches `mart_rfm`.
+- [ ] Airflow DAG `train → score → publish` completes end-to-end without failure.
+
+### 10.5 Definition of Done for Sprint 3
+
+- [ ] AUC gate passed.
+- [ ] `mart_churn_scores` written to Gold layer.
+- [ ] MLflow experiment accessible.
+- [ ] No open High / Critical defects remain.
+
+---
+
+## 11. QA Checklist — Sprint 4
+
+### 11.1 Clustering
+
+- [ ] K-Means model trains on `mart_features` without errors.
+- [ ] 3 clusters are produced with meaningful labels (High-Value, Mid-Tier, Occasional).
+- [ ] Cluster profiles saved to `ml/artifacts/clustering/cluster_profiles.csv`.
+- [ ] SHAP values computed and saved to `ml/artifacts/shap/`.
+
+### 11.2 Streamlit app
+
+- [ ] App starts without import errors.
+- [ ] Churn tab: customer search, risk tier display, SHAP chart load correctly.
+- [ ] Clustering tab: cluster profiles and customer assignments display correctly.
+- [ ] Monitoring tab: drift metrics chart renders without errors.
+- [ ] App loads `app/data/customers.parquet` and `app/model/model.pkl` correctly.
+
+### 11.3 HuggingFace Spaces deployment
+
+- [ ] App is publicly accessible without login.
+- [ ] All tabs functional on the deployed version.
+- [ ] No hardcoded local paths in app code.
+
+### 11.4 GitHub Actions CI/CD
+
+- [ ] `ruff` lint passes on all Python files.
+- [ ] `dbt test` passes (35/35 assertions).
+- [ ] `pytest` passes all unit and integration tests.
+- [ ] Docker build completes without errors.
+- [ ] CI pipeline is green on `main` branch.
+
+### 11.5 Dashboard UAT
+
+- [ ] Net Revenue in Fabric matches `SUM(net_revenue)` from `mart_kpi_monthly`.
+- [ ] Total Orders matches `SUM(orders)` from `mart_kpi_monthly`.
+- [ ] Active Customers = `DISTINCTCOUNT(fact_transactions[customer_sk])`.
+- [ ] AOV = `SUM(revenue) / SUM(orders)` — verified against `mart_kpi_monthly`.
+- [ ] Churn Risk Tier donut counts match `mart_churn_scores` by `risk_tier`.
+- [ ] RFM Segment donut counts match `mart_rfm` by `segment`.
+- [ ] All 8 CSV files exported to `data/fabric/` without errors.
+
+### 11.6 Definition of Done for Sprint 4
+
+- [ ] Dashboard published and accessible to team.
+- [ ] CI/CD pipeline green on main.
+- [ ] Streamlit app live on HuggingFace Spaces.
+- [ ] Technical Report completed.
+- [ ] Release tag `v1.0` created.
+- [ ] All Jira tickets closed.
+- [ ] No open High / Critical defects remain.
+
+---
+
+## 12. Deliverables Review Checklist
 
 ### 10.1 Document deliverables
 
@@ -338,6 +457,8 @@ At the end of Sprint 2 QA must deliver at minimum:
 
 ---
 
-## 13. Conclusion
+## 16. Conclusion
 
-This test plan is intended as a living document that will be updated when scope, timeline, or priorities change. For Sprints 1 and 2 the focus is to clarify requirements, lock down data logic, ensure the end-to-end pipeline reaches the Star Schema and RFM reliably, and provide sufficient deliverables for an internal release decision.
+This test plan covers all four sprints of the Retail Customer Intelligence Platform project. Sprint 1–2 focused on requirements alignment and data pipeline correctness. Sprint 3 extended coverage to ML pipeline validation and model quality gates. Sprint 4 completed UAT on the dashboard, CI/CD green-light verification, and final release readiness.
+
+All acceptance criteria were met and the project was released as `v1.0` on 30 June 2026.

@@ -101,7 +101,7 @@ The following are explicitly **excluded** from this delivery (simulated or docum
 
 ### 4.3 Assumptions
 
-- The source is a single historical transaction dataset ("Online Retail List for RFM", ~1.01M rows), provided as `online_retail_listing.csv`.
+- The source is a single historical transaction dataset ("Online Retail Listing", ~1.05M rows, Kaggle), provided as `online_retail_listing.csv`.
 - Source timestamps are historical (2009–2011) and are **date-rebased to the present** so that recency and churn windows remain meaningful for demonstration.
 - One currency (GBP); monetary values are reported in GBP.
 - Customer identity is the source-provided `Customer ID`; transactions without a customer ID are treated as guest/anonymous and excluded from customer-level analytics.
@@ -142,7 +142,7 @@ The following are explicitly **excluded** from this delivery (simulated or docum
 | NFR-2 | **Reproducibility** | Entire stack runs from a single command in a containerised environment; no manual environment drift. |
 | NFR-3 | **Reliability** | Ingestion is idempotent and partitioned; a failed run does not corrupt prior data; the raw layer is immutable. |
 | NFR-4 | **Auditability** | Each pipeline stage writes an audit/quality log (row counts, metrics, timestamps). |
-| NFR-5 | **Performance** | The full historical dataset (~1.01M rows) processes end-to-end within the local demo window. |
+| NFR-5 | **Performance** | The full historical dataset (~1.05M rows) processes end-to-end within the local demo window. |
 | NFR-6 | **Maintainability** | Code is tested (unit + pipeline + acceptance) and linted; transformations are versioned. |
 | NFR-7 | **Model quality** | The churn model must meet a minimum performance gate (AUC threshold) before its scores are published. |
 | NFR-8 | **Usability** | Marketing can obtain a retention list without engineering help (self-serve export). |
