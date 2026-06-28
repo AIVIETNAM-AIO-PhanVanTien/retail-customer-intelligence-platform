@@ -220,7 +220,7 @@ docker compose up --build -d
 | MLflow UI | http://localhost:5000 |
 | Streamlit Ops | http://localhost:8501 |
 
-> **Dataset:** place `online_retail_listing.csv` under `data/raw/` (semicolon-delimited, ~1.01M rows). Not committed — see `.gitignore`.
+> **Dataset:** place `online_retail_listing.csv` under `data/raw/` (semicolon-delimited, Latin-1, ~1.05M rows, 2009–2011). Not committed — see `.gitignore`.
 
 > **Primary BI dashboard is Power BI** — open `data/powerbi/*.pbix` in Power BI Desktop after running `make pipeline` + `python scripts/export_powerbi.py`.
 
