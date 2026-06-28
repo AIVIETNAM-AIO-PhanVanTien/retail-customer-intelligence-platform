@@ -30,7 +30,7 @@ is implemented in the referenced file.
 ## 1. Source Schema — `data/raw/online_retail_listing.csv`
 
 Semicolon-delimited (`;`), `ISO-8859-1`, **European decimals** (comma), `dd.mm.yyyy HH:MM`
-dates, ~1.01M rows. All columns read as **string** first (`dtype=str`).
+dates, ~1.05M rows. All columns read as **string** first (`dtype=str`).
 
 | Source column | Example | Notes |
 | --- | --- | --- |
