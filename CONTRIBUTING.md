@@ -34,15 +34,15 @@
 | Airflow DAG (ML extension) | Pipeline | S3 | ✅ Done |
 | SHAP + feature explainability | Model | S4 | ✅ Done |
 | K-Means clustering | Model | S4 | ✅ Done |
-| Power BI dashboard | Data | S4 | 🔄 In progress |
+| Power BI dashboard | Data | S4 | ✅ Done |
 | GitHub Actions CI/CD | Pipeline | S4 | ✅ Done |
 | Streamlit demo (HF Spaces) | Pipeline | S4 | ✅ Done |
 | Monitoring (data + model drift) | Pipeline | S4 | ✅ Done |
-| Business Impact Report | Tech Lead | S4 | 🔄 In progress |
-| Final QA report | QA | S4 | 🔄 In progress |
-| LaTeX Technical Report | All | S4 | 🔄 In progress |
-| Presentation slides + demo script | Tech Lead | S4 | 🔄 In progress |
-| Demo video | Team Leader | S4 | 🔄 In progress |
+| Business Impact Report | Tech Lead | S4 | ✅ Done |
+| Final QA report | QA | S4 | ✅ Done |
+| LaTeX Technical Report | All | S4 | ✅ Done |
+| Presentation slides + demo script | Tech Lead | S4 | ✅ Done |
+| Demo video | Team Leader | S4 | ✅ Done |
 
 ---
 
