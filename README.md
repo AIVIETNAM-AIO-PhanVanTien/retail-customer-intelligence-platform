@@ -393,4 +393,4 @@ Visible in the **📈 Monitoring** tab of the Streamlit app and the local ops da
 
 ## License
 
-Dataset: Online Retail List for RFM (public, UCI ML Repository). Project code: [MIT](LICENSE).
+Dataset: [Online Retail List for RFM](https://www.kaggle.com/datasets/lakshmi25npathi/online-retail-dataset) (public, Kaggle). Project code: [MIT](LICENSE).
