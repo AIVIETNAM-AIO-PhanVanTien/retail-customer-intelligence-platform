@@ -217,7 +217,7 @@ docker compose up --build -d
 | Service | URL |
 |---|---|
 | Airflow UI | http://localhost:8080 |
-| MLflow UI | http://localhost:5000 |
+| MLflow UI | http://localhost:5001 |
 | Streamlit Ops | http://localhost:8501 |
 
 > **Dataset:** place `online_retail_listing.csv` under `data/raw/` (semicolon-delimited, Latin-1, ~1.05M rows, 2009–2011). Not committed — see `.gitignore`.
